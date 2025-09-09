@@ -26,6 +26,8 @@ import 'pages/home_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/ai_import_page.dart';
 
+
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
