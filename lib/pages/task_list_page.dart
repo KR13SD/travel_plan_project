@@ -1,3 +1,4 @@
+// lib/pages/task_list_page.dart
 import 'package:ai_task_project_manager/pages/task_view_page.dart';
 import 'package:ai_task_project_manager/services/localization_service.dart';
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import '../../controllers/dashboard_controller.dart';
 import '../../models/task_model.dart';
+import 'package:ai_task_project_manager/pages/join_plan_page.dart';
 
 class TaskListPage extends StatefulWidget {
   const TaskListPage({super.key});
@@ -26,6 +28,16 @@ class _TaskListPageState extends State<TaskListPage>
   // 🎨 Primary theme green
   static const Color kPrimary1 = Color(0xFF10B981); // emerald-500
   static const Color kPrimary2 = Color(0xFF059669); // emerald-600
+
+  // -------- Helpers (timezone-safe) --------
+  DateTime _asLocal(DateTime d) => d.isUtc ? d.toLocal() : d;
+
+  String _normalizeLocale(String raw) {
+    if (raw.contains('_')) return raw;
+    if (raw == 'th') return 'th_TH';
+    if (raw == 'en') return 'en_US';
+    return raw;
+  }
 
   @override
   void initState() {
@@ -68,15 +80,17 @@ class _TaskListPageState extends State<TaskListPage>
   }
 
   Future<void> _initDateFormatting() async {
-    final locale = Get.locale?.toString() ?? 'th_TH';
+    final raw = Get.locale?.toString() ?? 'th_TH';
+    final locale = _normalizeLocale(raw);
     await initializeDateFormatting(locale, null);
     _updateFormattedDate(DateTime.now());
   }
 
   void _updateFormattedDate(DateTime date) {
-    final locale = Get.locale?.toString() ?? 'th_TH';
+    final raw = Get.locale?.toString() ?? 'th_TH';
+    final locale = _normalizeLocale(raw);
     final formatter = DateFormat('dd MMM yyyy', locale);
-    formattedDate.value = formatter.format(date);
+    formattedDate.value = formatter.format(_asLocal(date));
   }
 
   final List<Map<String, Object>> statusOptions = [
@@ -84,7 +98,6 @@ class _TaskListPageState extends State<TaskListPage>
       'key': 'all',
       'label': 'all'.tr,
       'icon': Icons.dashboard_rounded,
-      // ✅ เปลี่ยนเป็นธีมเขียว
       'gradient': [kPrimary1, kPrimary2],
     },
     {
@@ -132,7 +145,8 @@ class _TaskListPageState extends State<TaskListPage>
         return allTasks
             .where(
               (t) =>
-                  t.status.toLowerCase() != 'done' && t.endDate.isBefore(now),
+                  t.status.toLowerCase() != 'done' &&
+                  _asLocal(t.endDate).isBefore(now),
             )
             .toList();
       case 'all':
@@ -145,15 +159,20 @@ class _TaskListPageState extends State<TaskListPage>
     final now = DateTime.now();
     const priority = {'in_progress': 1, 'todo': 2, 'overdue': 3, 'done': 4};
 
-    return tasks..sort((a, b) {
-      String statusA = a.status.toLowerCase();
-      String statusB = b.status.toLowerCase();
+    return tasks
+      ..sort((a, b) {
+        String statusA = a.status.toLowerCase();
+        String statusB = b.status.toLowerCase();
 
-      if (statusA != 'done' && a.endDate.isBefore(now)) statusA = 'overdue';
-      if (statusB != 'done' && b.endDate.isBefore(now)) statusB = 'overdue';
+        if (statusA != 'done' && _asLocal(a.endDate).isBefore(now)) {
+          statusA = 'overdue';
+        }
+        if (statusB != 'done' && _asLocal(b.endDate).isBefore(now)) {
+          statusB = 'overdue';
+        }
 
-      return (priority[statusA] ?? 99).compareTo(priority[statusB] ?? 99);
-    });
+        return (priority[statusA] ?? 99).compareTo(priority[statusB] ?? 99);
+      });
   }
 
   @override
@@ -244,6 +263,15 @@ class _TaskListPageState extends State<TaskListPage>
                   ),
                 ],
               ),
+            ),
+
+            // 👇 ปุ่ม Join
+            IconButton(
+              tooltip: 'เข้าร่วมแผนด้วยโค้ด',
+              icon: const Icon(Icons.group_add_rounded, color: Colors.white),
+              onPressed: () {
+                Get.to(() => const JoinPlanPage());
+              },
             ),
           ],
         ),
@@ -337,7 +365,6 @@ class _TaskListPageState extends State<TaskListPage>
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    // ✅ โหลดด้วยกราเดียนต์เขียว
                     gradient: const LinearGradient(
                       colors: [kPrimary1, kPrimary2],
                     ),
@@ -428,7 +455,7 @@ class _TaskListPageState extends State<TaskListPage>
 
   Widget _buildGlassmorphismTaskCard(TaskModel task, int index) {
     final isDone = task.status.toLowerCase() == 'done';
-    final isOverdue = !isDone && task.endDate.isBefore(DateTime.now());
+    final isOverdue = !isDone && _asLocal(task.endDate).isBefore(DateTime.now());
 
     List<Color> gradientColors;
     IconData statusIcon;
@@ -455,6 +482,15 @@ class _TaskListPageState extends State<TaskListPage>
       gradientColors = [const Color(0xFFe17055), const Color(0xFFd63031)];
       statusIcon = Icons.warning_rounded;
     }
+
+    // ✅ นับจาก checklist โดยตรง (ไม่พึ่ง field พิเศษ)
+    final int subtaskCount = task.checklist.length;
+    final int planCount = task.checklist
+        .where((e) => (e['type'] ?? '').toString() != 'hotel')
+        .length;
+    final int hotelCount = task.checklist
+        .where((e) => (e['type'] ?? '').toString() == 'hotel')
+        .length;
 
     return TweenAnimationBuilder<double>(
       duration: Duration(milliseconds: 600 + (index * 100)),
@@ -503,6 +539,8 @@ class _TaskListPageState extends State<TaskListPage>
                           statusIcon,
                           isDone,
                         ),
+                        const SizedBox(height: 12),
+                        _buildMetaChips(subtaskCount, planCount, hotelCount),
                         const SizedBox(height: 16),
                         _buildDateSection(task, isOverdue),
                         if (isOverdue) ...[
@@ -520,6 +558,75 @@ class _TaskListPageState extends State<TaskListPage>
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMetaChips(int subtasks, int plans, int hotels) {
+    final chips = <Widget>[];
+    if (subtasks > 0) {
+      chips.add(
+        _miniChip(
+          icon: Icons.checklist_rounded,
+          label: '$subtasks',
+          bg: const Color(0xFFEEF2FF),
+          fg: const Color(0xFF4F46E5),
+        ),
+      );
+    }
+    if (plans > 0) {
+      chips.add(
+        _miniChip(
+          icon: Icons.place_rounded,
+          label: '$plans',
+          bg: const Color(0xFFEFFDF5),
+          fg: kPrimary2,
+        ),
+      );
+    }
+    if (hotels > 0) {
+      chips.add(
+        _miniChip(
+          icon: Icons.hotel_rounded,
+          label: '$hotels',
+          bg: const Color(0xFFFFF7ED),
+          fg: const Color(0xFFEA580C),
+        ),
+      );
+    }
+
+    if (chips.isEmpty) return const SizedBox.shrink();
+
+    return Wrap(spacing: 8, runSpacing: 8, children: chips);
+  }
+
+  Widget _miniChip({
+    required IconData icon,
+    required String label,
+    required Color bg,
+    required Color fg,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: fg.withOpacity(0.2)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: fg),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: fg,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -617,7 +724,6 @@ class _TaskListPageState extends State<TaskListPage>
               'duedate'.tr,
               task.endDate,
               Icons.flag_rounded,
-              // ✅ ถ้าไม่ overdue ใช้เขียวหลัก
               isOverdue ? const Color(0xFFe17055) : kPrimary2,
             ),
           ),
@@ -728,7 +834,8 @@ class _TaskListPageState extends State<TaskListPage>
     IconData icon,
     Color color,
   ) {
-    final locale = Get.locale?.toString() ?? 'en_US';
+    final raw = Get.locale?.toString() ?? 'en_US';
+    final locale = _normalizeLocale(raw);
     final formatter = DateFormat('dd MMM yyyy', locale);
 
     return Row(
@@ -755,7 +862,7 @@ class _TaskListPageState extends State<TaskListPage>
                 ),
               ),
               Text(
-                formatter.format(date),
+                formatter.format(_asLocal(date)),
                 style: const TextStyle(
                   fontSize: 13,
                   color: Color(0xFF2D3748),
@@ -772,28 +879,27 @@ class _TaskListPageState extends State<TaskListPage>
   Widget _buildModernFAB() {
     return Container(
       decoration: BoxDecoration(
-        // ✅ FAB ใช้ธีมเขียว
-        gradient: const LinearGradient(colors: [kPrimary1, kPrimary2]),
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: kPrimary2.withOpacity(0.25)),
         boxShadow: [
           BoxShadow(
-            color: kPrimary1.withOpacity(0.35),
-            blurRadius: 15,
-            offset: const Offset(0, 8),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
       child: FloatingActionButton.extended(
-        onPressed: () => Get.toNamed('/addtasks'),
-        backgroundColor: Colors.transparent,
+        heroTag: 'fab_join_plan',
+        onPressed: () => Get.to(() => const JoinPlanPage()),
+        backgroundColor: Colors.white,
+        foregroundColor: kPrimary2,
         elevation: 0,
-        icon: const Icon(Icons.add_rounded, color: Colors.white),
-        label: Text(
-          'addtask'.tr,
-          style: const TextStyle(
-            fontWeight: FontWeight.w600,
-            color: Colors.white,
-          ),
+        icon: const Icon(Icons.group_add_rounded),
+        label: const Text(
+          'เข้าร่วมแผนด้วยโค้ด',
+          style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -844,7 +950,7 @@ class _TaskListPageState extends State<TaskListPage>
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(colors: [kPrimary1, kPrimary2]),
-              borderRadius: BorderRadius.circular(10)
+              borderRadius: BorderRadius.circular(10),
             ),
             child: TextButton(
               onPressed: () {
@@ -869,7 +975,7 @@ class _TaskListPageState extends State<TaskListPage>
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
+              decoration:  BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFFe17055), Color(0xFFd63031)],
                 ),
@@ -895,17 +1001,14 @@ class _TaskListPageState extends State<TaskListPage>
               gradient: LinearGradient(
                 colors: [Color(0xFFe17055), Color(0xFFd63031)],
               ),
-              borderRadius: BorderRadius.circular(10)
+              borderRadius: BorderRadius.circular(10),
             ),
             child: TextButton(
               onPressed: () {
                 controller.deleteTask(task.id);
                 Navigator.pop(context);
               },
-              child: Text(
-                'confirm'.tr,
-                style: TextStyle(color: Colors.white),
-              ),
+              child: Text('confirm'.tr, style: TextStyle(color: Colors.white)),
             ),
           ),
         ],
@@ -923,11 +1026,11 @@ class _TaskListPageState extends State<TaskListPage>
           children: [
             Container(
               padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
+              decoration:  BoxDecoration(
                 gradient: LinearGradient(
                   colors: [Color(0xFFfdcb6e), Color(0xFFe17055)],
                 ),
-                borderRadius: BorderRadius.circular(10)
+                borderRadius: BorderRadius.circular(10),
               ),
               child: const Icon(Icons.work, color: Colors.white),
             ),
@@ -945,21 +1048,18 @@ class _TaskListPageState extends State<TaskListPage>
             child: Text('cancel'.tr, style: TextStyle(color: Colors.grey[600])),
           ),
           Container(
-            decoration: BoxDecoration(
+            decoration:  BoxDecoration(
               gradient: LinearGradient(
                 colors: [Color(0xFFfdcb6e), Color(0xFFe17055)],
               ),
-              borderRadius: BorderRadius.circular(10)
+              borderRadius: BorderRadius.circular(10),
             ),
             child: TextButton(
               onPressed: () {
                 controller.updateTaskStatus(task.id, 'in_progress');
                 Navigator.pop(context);
               },
-              child: Text(
-                'confirm'.tr,
-                style: TextStyle(color: Colors.white),
-              ),
+              child: Text('confirm'.tr, style: TextStyle(color: Colors.white)),
             ),
           ),
         ],

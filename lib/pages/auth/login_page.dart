@@ -15,11 +15,11 @@ class LoginPage extends StatelessWidget {
 
   // ข้อมูล test user
   final Map<String, String> testUser1 = {
-    'email': 'arjin@momomail.coco',
-    'password': '111111',
-  };
+    'email': 'motaro@mail.com',
+    'password': '123456',
+};
   final Map<String, String> testUser2 = {
-    'email': 'aka@mail.com',
+    'email': 'namo@mail.com',
     'password': '123456',
   };
 

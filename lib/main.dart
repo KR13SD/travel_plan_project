@@ -11,6 +11,7 @@ import 'package:ai_task_project_manager/pages/setting/profile_page.dart';
 import 'package:ai_task_project_manager/pages/setting/setting_page.dart';
 import 'package:ai_task_project_manager/pages/task_list_page.dart';
 import 'package:ai_task_project_manager/services/localization_service.dart';
+import 'package:ai_task_project_manager/pages/join_plan_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -84,6 +85,7 @@ class MyApp extends StatelessWidget {
           GetPage(name: '/addtasks', page: () => const AddTaskPage()),
           GetPage(name: '/analytic', page: () => AnalyticsPage()),
           GetPage(name: '/notifications', page: () => NotificationsPage()),
+          GetPage(name: '/join', page: () => const JoinPlanPage()),
 
           // Setting
           GetPage(name: '/settings', page: () => SettingPage()),
