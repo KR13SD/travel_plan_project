@@ -17,7 +17,7 @@ class _ContactSupportPageState extends State<ContactSupportPage>
   final TextEditingController nameCtrl = TextEditingController();
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
   
-  bool _isLoading = false;
+  bool _isGenerating = false;
   bool _messageSent = false;
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -249,14 +249,14 @@ class _ContactSupportPageState extends State<ContactSupportPage>
             
             // Send Button
             FilledButton.icon(
-              onPressed: _isLoading ? null : _handleSubmit,
+              onPressed: _isGenerating ? null : _handleSubmit,
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              icon: _isLoading 
+              icon: _isGenerating 
                 ? const SizedBox(
                     width: 20,
                     height: 20,
@@ -264,7 +264,7 @@ class _ContactSupportPageState extends State<ContactSupportPage>
                   )
                 : const Icon(Icons.send),
               label: Text(
-                _isLoading ? "sending".tr : "send_message".tr,
+                _isGenerating ? "sending".tr : "send_message".tr,
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
               ),
             ),
@@ -356,7 +356,7 @@ class _ContactSupportPageState extends State<ContactSupportPage>
     }
 
     setState(() {
-      _isLoading = true;
+      _isGenerating = true;
     });
 
     try {
@@ -396,7 +396,7 @@ class _ContactSupportPageState extends State<ContactSupportPage>
     } finally {
       if (mounted) {
         setState(() {
-          _isLoading = false;
+          _isGenerating = false;
         });
       }
     }

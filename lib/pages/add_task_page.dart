@@ -490,7 +490,7 @@ class _AddTaskPageState extends State<AddTaskPage>
                 ],
               ),
             ),
-            Obx(() => controller.isLoading.value
+            Obx(() => controller.isGenerating.value
                 ? Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -844,10 +844,10 @@ class _AddTaskPageState extends State<AddTaskPage>
                   ],
                 ),
                 child: ElevatedButton.icon(
-                  onPressed: controller.isLoading.value
+                  onPressed: controller.isGenerating.value
                       ? null
                       : () => controller.saveTask(_formKey, context),
-                  icon: controller.isLoading.value
+                  icon: controller.isGenerating.value
                       ? const SizedBox(
                           width: 24,
                           height: 24,
@@ -858,7 +858,7 @@ class _AddTaskPageState extends State<AddTaskPage>
                         )
                       : const Icon(Icons.save_rounded, size: 24),
                   label: Text(
-                    controller.isLoading.value ? 'saving'.tr : 'savetask'.tr,
+                    controller.isGenerating.value ? 'saving'.tr : 'savetask'.tr,
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.bold,

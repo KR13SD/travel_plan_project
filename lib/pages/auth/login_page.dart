@@ -282,7 +282,7 @@ class LoginPage extends StatelessWidget {
                             const SizedBox(height: 32),
                             
                             // Login Button
-                            c.isLoading.value
+                            c.isGenerating.value
                                 ? Container(
                                     height: 56,
                                     decoration: BoxDecoration(

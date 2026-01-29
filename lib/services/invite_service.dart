@@ -2,41 +2,45 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// โครงสร้างที่ใช้เก็บโค้ดเชิญ
-/// - tasks/{taskId}/invites/{autoId}   (สำหรับดูย้อนหลังในหน้ารายละเอียดแผน)
-/// - invites/{CODE}                    (สำหรับ lookup แบบเร็ว ไม่พึ่ง collectionGroup)
+/// โครงสร้างโค้ดเชิญ:
+/// - tasks/{taskId}/invites/{autoId} : ไว้ดูประวัติในหน้า Task
+/// - invites/{CODE}                  : lookup เร็วตอน join
 ///
 /// Roles: 'viewer' | 'editor'
 class InviteService {
   final FirebaseFirestore _fs;
   final FirebaseAuth _auth;
-  InviteService({
-    FirebaseFirestore? firestore,
-    FirebaseAuth? auth,
-  })  : _fs = firestore ?? FirebaseFirestore.instance,
-        _auth = auth ?? FirebaseAuth.instance;
+  InviteService({FirebaseFirestore? firestore, FirebaseAuth? auth})
+    : _fs = firestore ?? FirebaseFirestore.instance,
+      _auth = auth ?? FirebaseAuth.instance;
 
-  // -----------------------------
-  // Collections
-  // -----------------------------
+  bool _isOverlap(
+    DateTime aStart,
+    DateTime aEnd,
+    DateTime bStart,
+    DateTime bEnd,
+  ) {
+    // ชนถ้าไม่ (A ก่อน B และ A หลัง B)
+    return !(aEnd.isBefore(bStart) || aStart.isAfter(bEnd));
+  }
+
+  // collections
   CollectionReference<Map<String, dynamic>> _tasksCol() =>
       _fs.collection('tasks');
 
   CollectionReference<Map<String, dynamic>> _taskInvitesCol(String taskId) =>
       _tasksCol().doc(taskId).collection('invites');
 
-  /// top-level สำหรับ lookup ด้วยโค้ดโดยตรง (docId = CODE)
   DocumentReference<Map<String, dynamic>> _codeRef(String code) =>
       _fs.collection('invites').doc(code);
 
-  // -----------------------------
-  // Utilities
-  // -----------------------------
   String generateCode({int length = 6}) {
-    // ใช้ชุดอักษรอ่านง่าย ตัดตัวที่สับสนออก
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
     final rnd = Random.secure();
-    return List.generate(length, (_) => chars[rnd.nextInt(chars.length)]).join();
+    return List.generate(
+      length,
+      (_) => chars[rnd.nextInt(chars.length)],
+    ).join();
   }
 
   String _uidOrThrow() {
@@ -51,25 +55,15 @@ class InviteService {
     final snap = await _tasksCol().doc(taskId).get();
     if (!snap.exists) throw Exception('Task not found');
     final data = snap.data() as Map<String, dynamic>? ?? {};
-    final owner = (data['uid'] ?? '').toString();
-    if (owner != uid) {
+    if ((data['uid'] ?? '') != uid) {
       throw Exception('Only the task owner can create invite codes');
     }
   }
 
-  // -----------------------------
-  // Create invite
-  // -----------------------------
   /// สร้างโค้ดเชิญ (เฉพาะเจ้าของแผน)
-  ///
-  /// - role: 'viewer' | 'editor'
-  /// - expiresAt: วันหมดอายุ (ไม่ใส่ = ไม่หมดอายุ)
-  /// - maxUses: จำกัดจำนวนครั้งใช้โค้ด (ไม่ใส่ = ไม่จำกัด)
-  ///
-  /// คืนค่า: CODE
   Future<String> createInviteCode({
     required String taskId,
-    required String role,
+    required String role, // 'viewer' | 'editor'
     DateTime? expiresAt,
     int? maxUses,
   }) async {
@@ -77,7 +71,6 @@ class InviteService {
     await _ensureOwner(taskId, uid);
 
     final code = generateCode().toUpperCase();
-
     final payload = <String, dynamic>{
       'code': code,
       'taskId': taskId,
@@ -89,96 +82,144 @@ class InviteService {
       'usedCount': 0,
     };
 
-    // เขียน 2 จุด: subcollection (history) + top-level (lookup)
-    // 1) เก็บใน tasks/{taskId}/invites
     await _taskInvitesCol(taskId).add(payload);
-
-    // 2) เก็บใน invites/{CODE} → ใช้เป็น source หลักตอน join
     await _codeRef(code).set(payload);
-
     return code;
   }
 
-  // -----------------------------
-  // Join by code
-  // -----------------------------
   /// ใช้โค้ดเพื่อเข้าร่วมแผน
-  /// - อัปเดต editorUids/viewerUids/memberUids
-  /// - เช็ควันหมดอายุ/จำนวนครั้ง
-  Future<void> joinByCode(String code) async {
+  Future<void> joinByCode(
+    String code, {
+    bool checkOverlapWithOwnedPlans = false,
+  }) async {
     final uid = _uidOrThrow();
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) throw Exception('Invalid invite code');
 
+    // 1) อ่านโค้ด
     final codeSnap = await _codeRef(normalized).get();
     if (!codeSnap.exists) {
-      // ไม่พบทันที → โค้ดไม่ถูกต้อง
-      throw Exception('Invalid invite code');
+      throw Exception('โค้ดเชิญไม่ถูกต้อง');
     }
 
     final data = codeSnap.data()!;
     final String taskId = (data['taskId'] ?? '').toString();
-    if (taskId.isEmpty) throw Exception('Invite not linked to any task');
+    if (taskId.isEmpty) throw Exception('โค้ดนี้ไม่ผูกกับแผนใดๆ');
 
     final String role = (data['role'] == 'editor') ? 'editor' : 'viewer';
     final Timestamp? expTs = data['expiresAt'] as Timestamp?;
     final int? maxUses = (data['maxUses'] as num?)?.toInt();
     final int usedCount = (data['usedCount'] as num?)?.toInt() ?? 0;
 
-    // หมดอายุ?
+    // 2) เช็ควันหมดอายุ / โควต้า
     if (expTs != null && expTs.toDate().isBefore(DateTime.now())) {
-      throw Exception('Invite expired');
+      throw Exception('โค้ดเชิญหมดอายุแล้ว');
     }
-    // เต็มจำนวน?
     if (maxUses != null && usedCount >= maxUses) {
-      throw Exception('Invite has reached its limit');
+      throw Exception('โค้ดนี้ถูกใช้ครบตามจำนวนแล้ว');
     }
 
     final taskRef = _tasksCol().doc(taskId);
+    final taskSnap = await taskRef.get();
+    if (!taskSnap.exists) throw Exception('ไม่พบแผนปลายทาง');
 
-    await _fs.runTransaction((trx) async {
-      final tSnap = await trx.get(taskRef);
-      if (!tSnap.exists) throw Exception('Task not found');
+    final tData = taskSnap.data() as Map<String, dynamic>? ?? {};
+    final owner = (tData['uid'] ?? '').toString();
 
-      final tData = tSnap.data() as Map<String, dynamic>? ?? {};
-      final owner = (tData['uid'] ?? '').toString();
-      final editors = List<String>.from(tData['editorUids'] ?? const []);
-      final viewers = List<String>.from(tData['viewerUids'] ?? const []);
+    // 3) กัน owner ใช้โค้ดเข้าแผนตัวเอง
+    if (owner == uid) {
+      throw Exception('คุณเป็นเจ้าของแผนนี้อยู่แล้ว');
+    }
 
-      // ถ้ายังไม่เป็นสมาชิก ให้เพิ่มตาม role
-      final alreadyMember =
-          (owner == uid) || editors.contains(uid) || viewers.contains(uid);
+    // 4) กันสมาชิกซ้ำ
+    final editors = List<String>.from(tData['editorUids'] ?? const []);
+    final viewers = List<String>.from(tData['viewerUids'] ?? const []);
+    final members = <String>{}
+      ..add(owner)
+      ..addAll(editors)
+      ..addAll(viewers);
 
-      if (!alreadyMember) {
-        if (role == 'editor') {
-          editors.add(uid);
-        } else {
-          viewers.add(uid);
+    if (members.contains(uid)) {
+      throw Exception('คุณอยู่ในแผนนี้อยู่แล้ว');
+    }
+
+    // 5) (ออปชัน) กัน “ทับซ้อนแผน” กับแผนที่เราเป็น owner (ถ้าต้องการ)
+    if (checkOverlapWithOwnedPlans) {
+      final Timestamp? sTs = tData['startDate'] as Timestamp?;
+      final Timestamp? eTs = tData['endDate'] as Timestamp?;
+      if (sTs != null && eTs != null) {
+        final targetStart = sTs.toDate();
+        final targetEnd = eTs.toDate();
+
+        final owned = await _fs
+            .collection('tasks')
+            .where('uid', isEqualTo: uid)
+            .get();
+
+        for (final d in owned.docs) {
+          final x = d.data();
+          final os = (x['startDate'] as Timestamp?)?.toDate();
+          final oe = (x['endDate'] as Timestamp?)?.toDate();
+          if (os != null &&
+              oe != null &&
+              _isOverlap(os, oe, targetStart, targetEnd)) {
+            throw Exception('ช่วงเวลาแผนนี้ชนกับแผนที่คุณเป็นเจ้าของอยู่');
+          }
         }
       }
+    }
 
-      final members = <String>{}..add(owner)..addAll(editors)..addAll(viewers);
+    // 6) เข้าร่วมจริง — ใช้ Transaction เพื่อกัน race & update usedCount เฉพาะตอน join สำเร็จ
+    await _fs.runTransaction((trx) async {
+      final freshCode = await trx.get(_codeRef(normalized));
+      if (!freshCode.exists) {
+        throw Exception('โค้ดเชิญไม่ถูกต้อง');
+      }
 
-      // อัปเดต task
+      final freshTask = await trx.get(taskRef);
+      if (!freshTask.exists) throw Exception('ไม่พบแผนปลายทาง');
+
+      final ft = freshTask.data() as Map<String, dynamic>? ?? {};
+      final fOwner = (ft['uid'] ?? '').toString();
+      if (fOwner == uid) {
+        throw Exception('คุณเป็นเจ้าของแผนนี้อยู่แล้ว');
+      }
+
+      final fEditors = List<String>.from(ft['editorUids'] ?? const []);
+      final fViewers = List<String>.from(ft['viewerUids'] ?? const []);
+      final fMembers = <String>{}
+        ..add(fOwner)
+        ..addAll(fEditors)
+        ..addAll(fViewers);
+
+      if (fMembers.contains(uid)) {
+        throw Exception('คุณอยู่ในแผนนี้อยู่แล้ว');
+      }
+
+      // เพิ่มตาม role
+      if (role == 'editor') {
+        fEditors.add(uid);
+      } else {
+        fViewers.add(uid);
+      }
+      fMembers
+        ..clear()
+        ..add(fOwner)
+        ..addAll(fEditors)
+        ..addAll(fViewers);
+
       trx.update(taskRef, {
-        'editorUids': editors.toSet().toList(),
-        'viewerUids': viewers.toSet().toList(),
-        'memberUids': members.toList(),
+        'editorUids': fEditors.toSet().toList(),
+        'viewerUids': fViewers.toSet().toList(),
+        'memberUids': fMembers.toList(),
         'updatedAt': FieldValue.serverTimestamp(),
+        // ไม่ต้องพึ่ง _joinCode แล้ว เพราะเรา validate ฝั่งแอป ไม่ใช้ rules
       });
 
-      // นับการใช้โค้ด (ใน top-level)
-      trx.update(codeSnap.reference, {
-        'usedCount': FieldValue.increment(1),
-      });
+      trx.update(_codeRef(normalized), {'usedCount': FieldValue.increment(1)});
     });
   }
 
-  // -----------------------------
-  // Maintenance (optional)
-  // -----------------------------
-
-  /// ยกเลิก/ลบโค้ดเชิญ (เฉพาะเจ้าของ)
   Future<void> revokeInviteCode({
     required String taskId,
     required String code,
@@ -187,19 +228,16 @@ class InviteService {
     await _ensureOwner(taskId, uid);
 
     final normalized = code.trim().toUpperCase();
-    // ลบ top-level
     await _codeRef(normalized).delete();
 
-    // ลบใน subcollection ทั้งหมดที่ code ตรงกัน (ถ้ามีหลายอัน)
-    final q = await _taskInvitesCol(taskId)
-        .where('code', isEqualTo: normalized)
-        .get();
+    final q = await _taskInvitesCol(
+      taskId,
+    ).where('code', isEqualTo: normalized).get();
     for (final d in q.docs) {
       await d.reference.delete();
     }
   }
 
-  /// แปลง role ให้ปลอดภัย (กันข้อความอื่น ๆ)
   static String safeRole(String role) =>
       (role == 'editor') ? 'editor' : 'viewer';
 }

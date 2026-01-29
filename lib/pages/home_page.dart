@@ -1,3 +1,6 @@
+import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
+import 'package:ai_task_project_manager/pages/ai_import_page.dart';
+import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -21,6 +24,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final AuthController authController = Get.find<AuthController>();
   final DashboardController dashboardController =
       Get.find<DashboardController>();
+  final AiImportController aiImportController = Get.put(AiImportController());
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -76,53 +80,66 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance
-            .collection('users')
-            .doc(uid)
-            .snapshots(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: primaryColor),
-            );
-          }
-          if (!snapshot.hasData || !snapshot.data!.exists) {
-            return const Center(
-              child: Text(
-                "ไม่พบข้อมูลผู้ใช้",
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            );
-          }
-
-          final userData = snapshot.data!.data() as Map<String, dynamic>;
-          final name = userData['name'] ?? 'ผู้ใช้งาน';
-          final email = userData['email'] ?? 'ไม่มีข้อมูล';
-
-          return FadeTransition(
-            opacity: _fadeAnimation,
-            child: SlideTransition(
-              position: _slideAnimation,
-              child: CustomScrollView(
-                slivers: [
-                  _buildSliverAppBar(name),
-                  SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 40),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        const SizedBox(height: 32),
-                        _buildWelcomeCard(name, email),
-                        const SizedBox(height: 32),
-                        _buildMenuGrid(),
-                      ]),
-                    ),
+      body: Stack(
+        children: [
+          StreamBuilder<DocumentSnapshot>(
+            stream: FirebaseFirestore.instance
+                .collection('users')
+                .doc(uid)
+                .snapshots(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(
+                  child: CircularProgressIndicator(color: primaryColor),
+                );
+              }
+              if (!snapshot.hasData || !snapshot.data!.exists) {
+                return const Center(
+                  child: Text(
+                    "ไม่พบข้อมูลผู้ใช้",
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
-                ],
-              ),
+                );
+              }
+
+              final userData = snapshot.data!.data() as Map<String, dynamic>;
+              final name = userData['name'] ?? 'ผู้ใช้งาน';
+              final email = userData['email'] ?? 'ไม่มีข้อมูล';
+
+              return FadeTransition(
+                opacity: _fadeAnimation,
+                child: SlideTransition(
+                  position: _slideAnimation,
+                  child: CustomScrollView(
+                    slivers: [
+                      _buildSliverAppBar(name),
+                      SliverPadding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
+                        sliver: SliverList(
+                          delegate: SliverChildListDelegate([
+                            const SizedBox(height: 32),
+                            _buildWelcomeCard(name, email),
+                            const SizedBox(height: 32),
+                            _buildMenuGrid(),
+                          ]),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: SafeArea(
+              minimum: EdgeInsets.only(bottom: 16),
+              child: AiGeneratingOverlay(),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -314,7 +331,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                   maxLines: 1,
                   minFontSize: 12,
-                  overflow:  TextOverflow.ellipsis,
+                  overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -367,14 +384,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'description': 'ai-assistance'.tr,
         'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
       },
-      {
-        'icon': Icons.analytics_outlined,
-        'title': 'analytics'.tr,
-        'route': '/analytic',
-        'color': const Color(0xFFEF4444),
-        'description': 'track-progress'.tr,
-        'gradient': [const Color(0xFFEF4444), const Color(0xFFDC2626)],
-      },
+      // {
+      //   'icon': Icons.analytics_outlined,
+      //   'title': 'analytics'.tr,
+      //   'route': '/analytic',
+      //   'color': const Color(0xFFEF4444),
+      //   'description': 'track-progress'.tr,
+      //   'gradient': [const Color(0xFFEF4444), const Color(0xFFDC2626)],
+      // },
     ];
 
     return GridView.builder(

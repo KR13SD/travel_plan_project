@@ -1,3 +1,4 @@
+// lib/pages/task_detail_page.dart
 import 'package:ai_task_project_manager/pages/ai_map_page.dart';
 import 'package:ai_task_project_manager/pages/map_preview.dart';
 import 'package:ai_task_project_manager/widget/invite_sheet.dart';
@@ -10,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 
 import '../controllers/dashboard_controller.dart';
 import '../models/task_model.dart';
+import '../services/ai_api_service.dart'; // 👈 เรียก AI ปรับแผน
 
 class TaskDetailPage extends StatefulWidget {
   final TaskModel task;
@@ -22,10 +24,8 @@ class TaskDetailPage extends StatefulWidget {
 class _TaskDetailPageState extends State<TaskDetailPage>
     with TickerProviderStateMixin {
   late TextEditingController titleController;
-  late String priority;
   late DateTime startDate;
   late DateTime endDate;
-  late String status;
 
   late DateTime editedStartDate;
   late DateTime editedEndDate;
@@ -38,52 +38,17 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   // timezone-safe helper
   DateTime _asLocal(DateTime d) => d.isUtc ? d.toLocal() : d;
 
-  // เก็บต้นฉบับ + สำเนาแก้ไข
-  List<Map<String, dynamic>> originalChecklist = [];
+  // checklist
   List<Map<String, dynamic>> editedChecklist = [];
-
-  // สำหรับ progress รวม
   List<Map<String, dynamic>> checklist = [];
 
-  // เก็บสถานะเลือกโรงแรมหลัก (radio)
+  // hotel main select
   String? _selectedHotelKey;
 
-  // Priority / Status options
-  final Map<String, Map<String, dynamic>> priorityOptions = {
-    'Low': {
-      'label': 'low'.tr,
-      'color': Colors.green,
-      'icon': Icons.low_priority,
-    },
-    'Medium': {
-      'label': 'medium'.tr,
-      'color': Colors.orange,
-      'icon': Icons.remove,
-    },
-    'High': {
-      'label': 'high'.tr,
-      'color': Colors.red,
-      'icon': Icons.priority_high,
-    },
-  };
-
-  final Map<String, Map<String, dynamic>> statusOptions = {
-    'todo': {
-      'label': 'pending'.tr,
-      'color': Colors.grey,
-      'icon': Icons.pending_actions,
-    },
-    'in_progress': {
-      'label': 'inprogress'.tr,
-      'color': Colors.orange,
-      'icon': Icons.work,
-    },
-    'done': {
-      'label': 'completed'.tr,
-      'color': Colors.green,
-      'icon': Icons.task_alt,
-    },
-  };
+  // AI prompt
+  final TextEditingController _aiPromptCtrl = TextEditingController();
+  bool _aiBusy = false;
+  String? _aiBusyReason;
 
   @override
   void initState() {
@@ -99,14 +64,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
     final latestTask = controller.findTaskById(widget.task.id) ?? widget.task;
 
-    // ต้นฉบับจาก model
-    originalChecklist = List<Map<String, dynamic>>.from(latestTask.checklist);
-
-    // สำเนาแก้ไข: preserve field ทั้งหมด + normalize field สำคัญ
-    editedChecklist = originalChecklist.map((raw) {
+    // copy checklist แล้ว normalize
+    editedChecklist = (latestTask.checklist ?? []).map<Map<String, dynamic>>((raw) {
       final m = Map<String, dynamic>.from(raw);
 
-      // normalize type (hotel/plan)
+      // normalize type
       final type = (m['type'] ?? '').toString();
       if (type.isEmpty) {
         final hasHotelHints =
@@ -117,26 +79,23 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         m['type'] = hasHotelHints ? 'hotel' : 'plan';
       }
 
-      // normalize basics
+      // default
       m['done'] = (m['done'] == true) || (m['completed'] == true);
       m['expanded'] = m['expanded'] ?? true;
 
-      // normalize priority
-      m['priority'] = _normalizePriority(m['priority']?.toString());
-
-      // parse date fields if present
+      // date
       m['start_date'] = _toDate(m['start_date']);
       m['end_date'] = _toDate(m['end_date']);
 
-      // time/duration keep as string
+      // string time/duration
       if (m['time'] != null) m['time'] = m['time'].toString();
       if (m['duration'] != null) m['duration'] = m['duration'].toString();
 
-      // lat/lng normalize to double
+      // lat/lng
       m['lat'] = _toDouble(m['lat']);
       m['lng'] = _toDouble(m['lng']);
 
-      // selectedHotel flag (default false)
+      // hotel
       if (m['type'] == 'hotel') {
         m['selectedHotel'] = (m['selectedHotel'] == true);
       }
@@ -144,7 +103,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       return m;
     }).toList();
 
-    // ตั้งค่า selectedHotel จากข้อมูลเดิม (ถ้ามี)
+    // set selected hotel from existing
     final idxSelected = editedChecklist.indexWhere(
       (e) => (e['type'] == 'hotel') && (e['selectedHotel'] == true),
     );
@@ -153,33 +112,24 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
 
     titleController = TextEditingController(text: latestTask.title);
-    priority = _normalizePriority(latestTask.priority);
     startDate = _asLocal(latestTask.startDate);
     endDate = _asLocal(latestTask.endDate);
     editedStartDate = startDate;
     editedEndDate = endDate;
-    status = latestTask.status;
 
     checklist = List<Map<String, dynamic>>.from(editedChecklist);
   }
 
-  String _normalizePriority(String? prio) {
-    if (prio == null) return 'Medium';
-    if (priorityOptions.containsKey(prio)) return prio;
-    switch (prio.toLowerCase()) {
-      case 'high':
-      case 'สูง':
-        return 'High';
-      case 'low':
-      case 'ต่ำ':
-        return 'Low';
-      case 'medium':
-      case 'กลาง':
-      default:
-        return 'Medium';
-    }
+  @override
+  void dispose() {
+    _animationController.dispose();
+    titleController.dispose();
+    _aiPromptCtrl.dispose();
+    checklist.clear();
+    super.dispose();
   }
 
+  // -------------------- utils --------------------
   DateTime? _toDate(dynamic v) {
     if (v == null) return null;
     if (v is DateTime) return _asLocal(v);
@@ -230,21 +180,32 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
-  @override
-  void dispose() {
-    _animationController.dispose();
-    titleController.dispose();
-    checklist.clear();
-    super.dispose();
+  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ (รองรับ google maps และชอร์ตลิงก์ยอดฮิต)
+  String _stripMapLinks(String text) {
+    if (text.trim().isEmpty) return text;
+    final lines = text.split(RegExp(r'\r?\n'));
+    final regexUrl = RegExp(
+      r'(https?:\/\/)?(www\.)?(google\.[^\/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|shorturl\.at|bit\.ly|tinyurl\.com)\/',
+      caseSensitive: false,
+    );
+    final kept = <String>[];
+    for (final raw in lines) {
+      final s = raw.trim();
+      if (s.isEmpty) continue;
+      final lower = s.toLowerCase();
+      if (lower.startsWith('แผนที่:') || lower.startsWith('map:')) continue;
+      if (regexUrl.hasMatch(s)) continue;
+      kept.add(raw);
+    }
+    return kept.join('\n');
   }
 
+  // -------------------- date picker --------------------
   Future<void> pickDate(BuildContext context, bool isStart) async {
-    if (status == 'done') return;
-
-    // กัน viewer
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final t = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!t.canEdit(uid)) return;
+    if (_aiBusy) return;
 
     final picked = await showDatePicker(
       context: context,
@@ -267,23 +228,22 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
+  // -------------------- CRUD checklist --------------------
   void addChecklistItem({String type = 'plan'}) {
+    if (_aiBusy) return;
     setState(() {
       editedChecklist.add({
-        'type': type, // 'plan' or 'hotel'
+        'type': type,
         'title': '',
         'description': '',
         'done': false,
         'expanded': true,
-        'priority': 'Medium',
-        // เฉพาะ/ร่วมได้
         'start_date': null,
         'end_date': null,
         'time': null,
         'duration': null,
         'lat': null,
         'lng': null,
-        // เฉพาะโรงแรม
         'price': null,
         'notes': null,
         'mapsUrl': null,
@@ -295,13 +255,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   }
 
   void removeChecklistItem(int index) {
-    // กัน viewer
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final t = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!t.canEdit(uid)) {
       _showErrorSnackbar('คุณไม่มีสิทธิ์ลบรายการนี้');
       return;
     }
+    if (_aiBusy) return;
 
     showDialog(
       context: context,
@@ -348,6 +308,10 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     );
   }
 
+  String _hotelKey(int index, Map<String, dynamic> h) =>
+      'h:$index:${(h['title'] ?? '').toString()}';
+
+  // -------------------- map open --------------------
   Future<void> _openExternalMap(double lat, double lng, {String? label}) async {
     final q = Uri.encodeComponent(label ?? 'Location');
     final googleUrl = Uri.parse(
@@ -366,24 +330,34 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     await launchUrl(appleUrl, mode: LaunchMode.externalApplication);
   }
 
-  String _hotelKey(int index, Map<String, dynamic> h) =>
-      'h:$index:${(h['title'] ?? '').toString()}';
-
+  // -------------------- save --------------------
   Future<void> saveTask() async {
-    // กัน viewer ยิงตรง
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!latest.canEdit(uid)) {
-      _showErrorSnackbar('คุณไม่มีสิทธิ์แก้ไขงานนี้');
+      _showErrorSnackbar('คุณไม่มีสิทธิ์แก้ไขทริปนี้');
       return;
     }
+    if (_aiBusy) return;
 
     if (titleController.text.trim().isEmpty) {
       _showErrorSnackbar('entertaskname'.tr);
       return;
     }
 
-    // สร้าง list ใหม่จาก editedChecklist โดย normalize และเคารพ "เลือกโรงแรมเดียว"
+    // ให้ AI ปรับแผนก่อนเซฟ (เงียบๆ)
+    {
+      final defaultPrompt = _aiPromptCtrl.text.trim().isNotEmpty
+          ? _aiPromptCtrl.text
+          : 'ตรวจสอบความทับซ้อนของเวลา/เส้นทาง ปรับเวลาให้เหมาะสมต่อเนื่องตามวันเดินทาง และคงลำดับตรรกะของทริป';
+      final ok = await _runAiAdjust(overridePrompt: defaultPrompt, quiet: true);
+      if (!ok) {
+        _showErrorSnackbar('หยุดบันทึก: ให้ AI ปรับไม่สำเร็จ');
+        return;
+      }
+    }
+
+    // แตก plan / hotel และทำความสะอาดข้อมูล
     final List<Map<String, dynamic>> plans = [];
     final List<Map<String, dynamic>> hotels = [];
 
@@ -391,59 +365,60 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       final raw = editedChecklist[i];
       final m = Map<String, dynamic>.from(raw);
 
-      // normalize สำคัญ
       m['type'] = (m['type'] ?? 'plan').toString();
       m['done'] = (m['done'] == true);
       m['expanded'] = m['expanded'] ?? true;
-      m['priority'] = _normalizePriority(m['priority']?.toString());
 
-      // ให้เป็น DateTime เพื่อให้ TaskModel.toJson() แปลงเป็น Timestamp ได้
       m['start_date'] = _toDate(m['start_date']);
       m['end_date'] = _toDate(m['end_date']);
 
-      // พิกัด double
       m['lat'] = _toDouble(m['lat']);
       m['lng'] = _toDouble(m['lng']);
 
-      // time/duration string
       if (m['time'] != null) m['time'] = m['time'].toString();
       if (m['duration'] != null) m['duration'] = m['duration'].toString();
 
-      // แยกตาม type
       if (m['type'] == 'hotel') {
-        // mark selectedHotel (จาก radio)
         final key = _hotelKey(i, raw);
-        m['selectedHotel'] =
-            (_selectedHotelKey != null && key == _selectedHotelKey);
+        m['selectedHotel'] = (_selectedHotelKey != null && key == _selectedHotelKey);
         hotels.add(m);
       } else {
+        // ตัดบรรทัดลิงก์ใน description ออกก่อนบันทึก
+        if (m['description'] != null) {
+          m['description'] = _stripMapLinks(m['description'].toString());
+        }
         plans.add(m);
       }
     }
 
-    // ถ้ามีการเลือกโรงแรมหลัก → เก็บเฉพาะโรงแรมนั้น
-    List<Map<String, dynamic>> finalHotels = hotels;
-    final selected = hotels.where((h) => h['selectedHotel'] == true).toList();
+    // ถ้าเลือกโรงแรมหลักไว้ ให้เก็บเฉพาะตัวที่เลือก และตัดลิงก์ออกจาก notes
+    List<Map<String, dynamic>> finalHotels = hotels.map((h) {
+      if (h['notes'] != null) {
+        h['notes'] = _stripMapLinks(h['notes'].toString());
+      }
+      return h;
+    }).toList();
+
+    final selected = finalHotels.where((h) => h['selectedHotel'] == true).toList();
     if (selected.isNotEmpty) {
       finalHotels = [selected.first];
     }
 
     final cleanedChecklist = [...plans, ...finalHotels];
 
-    final updatedTask = (controller.findTaskById(widget.task.id) ?? widget.task)
-        .copyWith(
-          title: titleController.text.trim(),
-          priority: priority.isEmpty ? 'Low' : priority,
-          startDate: editedStartDate,
-          endDate: editedEndDate,
-          status: status.isEmpty ? 'todo' : status,
-          checklist: cleanedChecklist,
-        );
+    // สร้าง Task อัปเดต
+    final updatedTask = latest.copyWith(
+      title: titleController.text.trim(),
+      startDate: editedStartDate,
+      endDate: editedEndDate,
+      checklist: cleanedChecklist,
+    );
 
+    // เขียนลง Firestore
     try {
       await controller.updateTask(updatedTask);
-      _showSuccessSnackbar('tasksaved'.tr);
-      Future.delayed(const Duration(milliseconds: 500), () {
+      _showSuccessSnackbar('บันทึกแผนเที่ยวแล้ว');
+      Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted) Navigator.of(context).pop(true);
       });
     } catch (e) {
@@ -451,6 +426,253 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
+  // -------------------- AI adjust --------------------
+  Future<void> _applyAiAdjust() async {
+    if (_aiBusy) return;
+
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final latest = controller.findTaskById(widget.task.id) ?? widget.task;
+    if (!latest.canEdit(uid)) {
+      _showErrorSnackbar('คุณไม่มีสิทธิ์แก้ไขทริปนี้');
+      return;
+    }
+
+    final prompt = _aiPromptCtrl.text.trim();
+    if (prompt.isEmpty) {
+      _showErrorSnackbar('พิมพ์สิ่งที่อยากให้ AI ปรับก่อน');
+      return;
+    }
+
+    setState(() {
+      _aiBusy = true;
+      _aiBusyReason = 'กำลังให้ AI ปรับแผน...';
+    });
+
+    try {
+      final payload = {
+        "task": {
+          "id": latest.id,
+          "title": titleController.text.trim(),
+          "startDate": editedStartDate.toIso8601String(),
+          "endDate": editedEndDate.toIso8601String(),
+          "checklist": editedChecklist.map((item) {
+            final m = Map<String, dynamic>.from(item);
+            m['start_date'] = _toDate(m['start_date'])?.toIso8601String();
+            m['end_date'] = _toDate(m['end_date'])?.toIso8601String();
+            m['lat'] = _toDouble(m['lat']);
+            m['lng'] = _toDouble(m['lng']);
+            if (m['time'] != null) m['time'] = m['time'].toString();
+            if (m['duration'] != null) m['duration'] = m['duration'].toString();
+            return m;
+          }).toList(),
+        },
+        "prompt": prompt,
+      };
+
+      final result = await AiApiService.adjustPlan(payload);
+      if ((result['status'] ?? '') != 'ok') {
+        throw Exception(result['message'] ?? 'AI error');
+      }
+
+      final List<dynamic> newList = result['checklist'] ?? [];
+
+      final normalized = newList.map<Map<String, dynamic>>((raw) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        m['type'] = (m['type'] ?? 'plan').toString();
+        m['done'] = (m['done'] == true);
+        m['expanded'] = m['expanded'] ?? true;
+        m['start_date'] = _toDate(m['start_date']);
+        m['end_date'] = _toDate(m['end_date']);
+        m['lat'] = _toDouble(m['lat']);
+        m['lng'] = _toDouble(m['lng']);
+        if (m['time'] != null) m['time'] = m['time'].toString();
+        if (m['duration'] != null) m['duration'] = m['duration'].toString();
+        if (m['type'] == 'hotel') {
+          m['selectedHotel'] = (m['selectedHotel'] == true);
+        }
+        return m;
+      }).toList();
+
+      setState(() {
+        editedChecklist = normalized;
+        checklist = List<Map<String, dynamic>>.from(editedChecklist);
+
+        final aiStart = result['startDate']?.toString();
+        final aiEnd = result['endDate']?.toString();
+        if (aiStart != null) {
+          editedStartDate = DateTime.tryParse(aiStart) ?? editedStartDate;
+        }
+        if (aiEnd != null) {
+          editedEndDate = DateTime.tryParse(aiEnd) ?? editedEndDate;
+        }
+      });
+
+      _showSuccessSnackbar('AI ปรับแผนให้แล้ว');
+    } catch (e) {
+      _showErrorSnackbar('ปรับแผนไม่สำเร็จ: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _aiBusy = false;
+          _aiBusyReason = null;
+        });
+      }
+    }
+  }
+
+  // เรียก AI แบบใช้ซ้ำ (เงียบๆ ได้)
+  Future<bool> _runAiAdjust({String? overridePrompt, bool quiet = true}) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final latest = controller.findTaskById(widget.task.id) ?? widget.task;
+    if (!latest.canEdit(uid)) return false;
+
+    final prompt = (overridePrompt ?? _aiPromptCtrl.text).trim();
+    if (prompt.isEmpty) return false;
+
+    setState(() {
+      _aiBusy = true;
+      _aiBusyReason = 'กำลังให้ AI ปรับแผน...';
+    });
+
+    try {
+      final payload = {
+        "task": {
+          "id": latest.id,
+          "title": titleController.text.trim(),
+          "startDate": editedStartDate.toIso8601String(),
+          "endDate": editedEndDate.toIso8601String(),
+          "checklist": editedChecklist.map((item) {
+            final m = Map<String, dynamic>.from(item);
+            m['start_date'] = _toDate(m['start_date'])?.toIso8601String();
+            m['end_date'] = _toDate(m['end_date'])?.toIso8601String();
+            m['lat'] = _toDouble(m['lat']);
+            m['lng'] = _toDouble(m['lng']);
+            if (m['time'] != null) m['time'] = m['time'].toString();
+            if (m['duration'] != null) m['duration'] = m['duration'].toString();
+            return m;
+          }).toList(),
+        },
+        "prompt": prompt,
+      };
+
+      final result = await AiApiService.adjustPlan(payload);
+      if ((result['status'] ?? '') != 'ok') {
+        throw Exception(result['message'] ?? 'AI error');
+      }
+
+      final List<dynamic> newList = result['checklist'] ?? [];
+
+      final normalized = newList.map<Map<String, dynamic>>((raw) {
+        final m = Map<String, dynamic>.from(raw as Map);
+        m['type'] = (m['type'] ?? 'plan').toString();
+        m['done'] = (m['done'] == true);
+        m['expanded'] = m['expanded'] ?? true;
+        m['start_date'] = _toDate(m['start_date']);
+        m['end_date'] = _toDate(m['end_date']);
+        m['lat'] = _toDouble(m['lat']);
+        m['lng'] = _toDouble(m['lng']);
+        if (m['time'] != null) m['time'] = m['time'].toString();
+        if (m['duration'] != null) m['duration'] = m['duration'].toString();
+        if (m['type'] == 'hotel') {
+          m['selectedHotel'] = (m['selectedHotel'] == true);
+        }
+        return m;
+      }).toList();
+
+      setState(() {
+        editedChecklist = normalized;
+        checklist = List<Map<String, dynamic>>.from(editedChecklist);
+
+        final aiStart = result['startDate']?.toString();
+        final aiEnd = result['endDate']?.toString();
+        if (aiStart != null)
+          editedStartDate = DateTime.tryParse(aiStart) ?? editedStartDate;
+        if (aiEnd != null)
+          editedEndDate = DateTime.tryParse(aiEnd) ?? editedEndDate;
+      });
+
+      if (!quiet) _showSuccessSnackbar('AI ปรับแผนให้แล้ว');
+      return true;
+    } catch (e) {
+      _showErrorSnackbar('ปรับแผนไม่สำเร็จ: $e');
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() {
+          _aiBusy = false;
+          _aiBusyReason = null;
+        });
+      }
+    }
+  }
+
+  // -------------------- move / reorder --------------------
+  int? _findPrevSameType(int currentIndex, bool isHotel) {
+    final type = isHotel ? 'hotel' : 'plan';
+    for (int i = currentIndex - 1; i >= 0; i--) {
+      if ((editedChecklist[i]['type'] ?? 'plan') == type) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  int? _findNextSameType(int currentIndex, bool isHotel) {
+    final type = isHotel ? 'hotel' : 'plan';
+    for (int i = currentIndex + 1; i < editedChecklist.length; i++) {
+      if ((editedChecklist[i]['type'] ?? 'plan') == type) {
+        return i;
+      }
+    }
+    return null;
+  }
+
+  void _swapScheduleFields(Map<String, dynamic> a, Map<String, dynamic> b) {
+    final tmpStart = a['start_date'];
+    final tmpEnd = a['end_date'];
+    final tmpTime = a['time'];
+    final tmpDuration = a['duration'];
+
+    a['start_date'] = b['start_date'];
+    a['end_date'] = b['end_date'];
+    a['time'] = b['time'];
+    a['duration'] = b['duration'];
+
+    b['start_date'] = tmpStart;
+    b['end_date'] = tmpEnd;
+    b['time'] = tmpTime;
+    b['duration'] = tmpDuration;
+  }
+
+  void _moveChecklistItem(
+    int index, {
+    required bool up,
+    required bool isHotel,
+  }) {
+    if (_aiBusy) return;
+
+    final prevIndex = _findPrevSameType(index, isHotel);
+    final nextIndex = _findNextSameType(index, isHotel);
+
+    if (up && prevIndex == null) return;
+    if (!up && nextIndex == null) return;
+
+    final targetIndex = up ? prevIndex! : nextIndex!;
+
+    setState(() {
+      final current = editedChecklist[index];
+      final target = editedChecklist[targetIndex];
+
+      _swapScheduleFields(current, target);
+
+      editedChecklist[index] = target;
+      editedChecklist[targetIndex] = current;
+
+      checklist = List<Map<String, dynamic>>.from(editedChecklist);
+    });
+  }
+
+  // -------------------- snackbar --------------------
   void _showSuccessSnackbar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -485,22 +707,17 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     );
   }
 
+  // -------------------- build --------------------
   @override
   Widget build(BuildContext context) {
-    final statusInfo = statusOptions[status] ?? statusOptions['todo']!;
-
     final user = FirebaseAuth.instance.currentUser;
     final currentUid = user?.uid ?? '';
-
-    // ใช้เวอร์ชันล่าสุดของ task จาก controller (กัน stale)
     final latestTask = controller.findTaskById(widget.task.id) ?? widget.task;
     final bool isOwner = latestTask.uid == currentUid;
     final bool canEdit = latestTask.canEdit(currentUid);
 
-    // แยก plans/hotels เพื่อโชว์หัวข้อชัดเจน
     final plans = editedChecklist.where((e) => e['type'] == 'plan').toList();
     final hotels = editedChecklist.where((e) => e['type'] == 'hotel').toList();
-    final completedCount = plans.where((e) => e['done'] == true).length;
 
     return Scaffold(
       backgroundColor: Colors.grey[50],
@@ -509,7 +726,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           SliverAppBar(
             pinned: true,
             automaticallyImplyLeading: false,
-            backgroundColor: statusInfo['color'],
+            backgroundColor: Colors.blueAccent,
             foregroundColor: Colors.white,
             elevation: 0,
             toolbarHeight: 86,
@@ -517,7 +734,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
             ),
             titleSpacing: 0,
-            title: _buildStatusHeaderBar(statusInfo),
+            title: _buildHeaderBar(),
             actions: [
               if (isOwner)
                 IconButton(
@@ -536,7 +753,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                     );
                   },
                 ),
-              if (canEdit)
+              if (canEdit && !_aiBusy)
                 IconButton(
                   onPressed: saveTask,
                   icon: const Icon(Icons.save_rounded),
@@ -553,27 +770,52 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    if (_aiBusy) ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFDBEAFE),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFF93C5FD)),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.lock_clock,
+                              color: Color(0xFF1D4ED8),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _aiBusyReason ?? 'กำลังประมวลผลด้วย AI…',
+                                style: const TextStyle(
+                                  color: Color(0xFF1D4ED8),
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+
+                    // ทริป
                     _buildSectionCard(
-                      title: 'taskname'.tr,
-                      icon: Icons.title,
+                      title: 'ชื่อทริป',
+                      icon: Icons.flight_takeoff_rounded,
                       child: TextFormField(
                         controller: titleController,
-                        readOnly: (status == 'done') || !canEdit,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                          color: (status == 'done' || !canEdit)
-                              ? Colors.grey
-                              : Colors.black87,
-                        ),
+                        readOnly: !canEdit || _aiBusy,
                         decoration: InputDecoration(
-                          hintText: 'insertname'.tr,
+                          hintText: 'เช่น เที่ยวกรุงเทพ 2 วัน 1 คืน',
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
-                          fillColor: (status == 'done' || !canEdit)
+                          fillColor: (!canEdit || _aiBusy)
                               ? Colors.grey[100]
                               : Colors.white,
                           contentPadding: const EdgeInsets.symmetric(
@@ -583,117 +825,79 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                         ),
                       ),
                     ),
+
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildSectionCard(
-                            title: 'priority'.tr,
-                            icon: Icons.priority_high,
-                            child: _buildPriorityDropdown(canEdit),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: _buildSectionCard(
-                            title: 'status'.tr,
-                            icon: Icons.flag,
-                            child: _buildStatusDropdown(canEdit),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
+
+                    // วันที่
                     _buildSectionCard(
-                      title: 'date'.tr,
+                      title: 'วันที่เดินทาง',
                       icon: Icons.calendar_today,
                       child: Row(
                         children: [
                           Expanded(
                             child: _buildDateCard(
-                              'startdate'.tr,
+                              'เริ่ม',
                               editedStartDate,
                               true,
-                              canEdit: canEdit,
+                              canEdit: canEdit && !_aiBusy,
                             ),
                           ),
                           const SizedBox(width: 12),
-                          Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.grey[300],
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(Icons.arrow_forward, size: 16),
-                          ),
+                          const Icon(Icons.arrow_forward),
                           const SizedBox(width: 12),
                           Expanded(
                             child: _buildDateCard(
-                              'duedate'.tr,
+                              'สิ้นสุด',
                               editedEndDate,
                               false,
-                              canEdit: canEdit,
+                              canEdit: canEdit && !_aiBusy,
                             ),
                           ),
                         ],
                       ),
                     ),
 
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
 
-                    // ===== Plans Card =====
+                    // AI adjust
+                    _buildAiAdjustCard(canEdit),
+
+                    const SizedBox(height: 16),
+
+                    // แผน / กิจกรรม
                     _buildSectionCard(
-                      title: 'แผน / กิจกรรม'.tr,
+                      title: 'แผน / กิจกรรม',
                       icon: Icons.route_rounded,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (plans.isNotEmpty) ...[
-                            LinearProgressIndicator(
-                              value: plans.isNotEmpty
-                                  ? completedCount / plans.length
-                                  : 0,
-                              backgroundColor: Colors.grey[200],
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                completedCount == plans.length
-                                    ? Colors.green
-                                    : Colors.blue,
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                          ],
                           Row(
                             children: [
                               Text(
-                                '${'items'.tr}: ${plans.length}',
+                                'รายการ: ${plans.length}',
                                 style: TextStyle(
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const Spacer(),
-                              if (status != 'done' && canEdit)
+                              if (canEdit && !_aiBusy)
                                 TextButton.icon(
-                                  onPressed: () =>
-                                      addChecklistItem(type: 'plan'),
+                                  onPressed: () => addChecklistItem(type: 'plan'),
                                   icon: const Icon(Icons.add_circle_outline),
-                                  label: Text('addsubtask'.tr),
+                                  label: const Text('เพิ่มสถานที่'),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           if (plans.isEmpty)
-                            _emptyBox('ไม่มีรายการแผน/กิจกรรม'.tr)
+                            _emptyBox('ยังไม่มีแผน เพิ่มสถานที่เลย')
                           else
                             ...plans.asMap().entries.map((entry) {
-                              final indexInEdited = editedChecklist.indexOf(
-                                entry.value,
-                              );
+                              final indexInEdited = editedChecklist.indexOf(entry.value);
                               return _buildChecklistItem(
                                 entry.value,
                                 indexInEdited,
-                                status == 'done',
-                                showHotelRadio: false,
                                 canEdit: canEdit,
                               );
                             }),
@@ -703,29 +907,34 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
                     const SizedBox(height: 16),
 
-                    // ===== Hotels Card =====
+                    // โรงแรม
                     _buildSectionCard(
-                      title: 'โรงแรม'.tr,
+                      title: 'โรงแรม',
                       icon: Icons.hotel_rounded,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _hotelNotice(),
+                          Text(
+                            'เลือกโรงแรมหลักได้ 1 แห่ง',
+                            style: TextStyle(
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                           const SizedBox(height: 8),
                           Row(
                             children: [
                               Text(
-                                '${'items'.tr}: ${hotels.length}',
+                                'รายการ: ${hotels.length}',
                                 style: TextStyle(
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
                               const Spacer(),
-                              if (status != 'done' && canEdit)
+                              if (canEdit && !_aiBusy)
                                 TextButton.icon(
-                                  onPressed: () =>
-                                      addChecklistItem(type: 'hotel'),
+                                  onPressed: () => addChecklistItem(type: 'hotel'),
                                   icon: const Icon(Icons.add_business_rounded),
                                   label: const Text('เพิ่มโรงแรม'),
                                 ),
@@ -733,18 +942,15 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           ),
                           const SizedBox(height: 8),
                           if (hotels.isEmpty)
-                            _emptyBox('ไม่มีรายการโรงแรม'.tr)
+                            _emptyBox('ยังไม่มีโรงแรม')
                           else
                             ...hotels.asMap().entries.map((entry) {
-                              final indexInEdited = editedChecklist.indexOf(
-                                entry.value,
-                              );
+                              final indexInEdited = editedChecklist.indexOf(entry.value);
                               return _buildChecklistItem(
                                 entry.value,
                                 indexInEdited,
-                                status == 'done',
-                                showHotelRadio: true,
                                 canEdit: canEdit,
+                                isHotel: true,
                               );
                             }),
                         ],
@@ -759,60 +965,57 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           ),
         ],
       ),
-      floatingActionButton: canEdit
+      floatingActionButton: (canEdit && !_aiBusy)
           ? FloatingActionButton.extended(
               onPressed: saveTask,
-              backgroundColor: statusInfo['color'],
+              backgroundColor: Colors.blueAccent,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.save_rounded),
-              label: Text(
-                'save'.tr,
-                style: const TextStyle(fontWeight: FontWeight.w600),
+              label: const Text(
+                'บันทึก',
+                style: TextStyle(fontWeight: FontWeight.w600),
               ),
             )
           : null,
     );
   }
 
-  Widget _emptyBox(String text) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[300]!),
-      ),
-      child: Center(
-        child: Text(
-          text,
-          style: TextStyle(
-            color: Colors.grey[600],
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _hotelNotice() {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF3C7),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFF59E0B)),
-      ),
-      child: const Row(
+  Widget _buildHeaderBar() {
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, right: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Icon(Icons.info_outline_rounded, color: Color(0xFFB45309)),
-          SizedBox(width: 8),
-          Expanded(
+          IconButton(
+            onPressed: () => Get.back(),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.2),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withOpacity(0.3)),
+            ),
+            child: const Icon(
+              Icons.description_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 14),
+          const Expanded(
             child: Text(
-              'เลือกโรงแรมหลักได้ 1 แห่ง (ถ้าเลือกไว้ ระบบจะเก็บเฉพาะโรงแรมที่เลือกเมื่อกดบันทึก)',
+              'ปรับแต่งแผนเที่ยว',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: Color(0xFF92400E),
-                fontWeight: FontWeight.w600,
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 24,
               ),
             ),
           ),
@@ -872,114 +1075,23 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     );
   }
 
-  Widget _buildPriorityDropdown(bool canEdit) {
-    final isDone = status == 'done';
-    return DropdownButtonFormField<String>(
-      value: priorityOptions.containsKey(priority) ? priority : 'Medium',
-      isExpanded: true,
-      decoration: InputDecoration(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        filled: true,
-        fillColor: (isDone || !canEdit) ? Colors.grey[100] : Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-      items: priorityOptions.entries.map((entry) {
-        final info = entry.value;
-        return DropdownMenuItem(
-          value: entry.key,
-          child: Row(
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: info['color'],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Icon(info['icon'], size: 14, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(info['label'], overflow: TextOverflow.ellipsis),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-      onChanged: (isDone || !canEdit)
-          ? null
-          : (val) => setState(() => priority = val!),
-    );
-  }
-
-  Widget _buildStatusDropdown(bool canEdit) {
-    final isDone = status == 'done';
-    return DropdownButtonFormField<String>(
-      value: statusOptions.containsKey(status) ? status : 'todo',
-      isExpanded: true,
-      decoration: InputDecoration(
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-        filled: true,
-        fillColor: (isDone || !canEdit) ? Colors.grey[100] : Colors.white,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      ),
-      items: statusOptions.entries.map((entry) {
-        final info = entry.value;
-        return DropdownMenuItem(
-          value: entry.key,
-          child: Row(
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  color: info['color'],
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Icon(info['icon'], size: 14, color: Colors.white),
-              ),
-              const SizedBox(width: 12),
-              Flexible(
-                child: Text(info['label'], overflow: TextOverflow.ellipsis),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-      onChanged: (isDone || !canEdit)
-          ? null
-          : (value) => setState(() => status = value!),
-    );
-  }
-
   Widget _buildDateCard(
     String label,
     DateTime date,
     bool isStart, {
     required bool canEdit,
   }) {
-    final isDone = status == 'done';
     final localDate = _asLocal(date);
-    final isOverdue = !isDone && localDate.isBefore(DateTime.now()) && !isStart;
 
     return InkWell(
-      onTap: (isDone || !canEdit) ? null : () => pickDate(context, isStart),
+      onTap: canEdit ? () => pickDate(context, isStart) : null,
       borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: (isDone || !canEdit) ? Colors.grey[100] : Colors.white,
+          color: canEdit ? Colors.white : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isOverdue ? Colors.red[300]! : Colors.grey[300]!,
-            width: isOverdue ? 2 : 1,
-          ),
+          border: Border.all(color: Colors.grey[300]!, width: 1),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -989,7 +1101,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 Icon(
                   isStart ? Icons.play_arrow : Icons.flag,
                   size: 16,
-                  color: isOverdue ? Colors.red : Colors.grey[600],
+                  color: Colors.grey[600],
                 ),
                 const SizedBox(width: 4),
                 Expanded(
@@ -999,7 +1111,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      color: isOverdue ? Colors.red : Colors.grey[600],
+                      color: Colors.grey[600],
                       fontWeight: FontWeight.w500,
                     ),
                   ),
@@ -1009,38 +1121,135 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             const SizedBox(height: 4),
             Text(
               dateFormat.format(localDate),
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: isOverdue ? Colors.red : Colors.black87,
+                color: Colors.black87,
               ),
             ),
-            if (isOverdue) ...[
-              const SizedBox(height: 4),
-              Text(
-                'overdue'.tr,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: Colors.red[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
           ],
         ),
       ),
     );
   }
 
-  /// แผน/โรงแรมแต่ละแถว
+  Widget _buildAiAdjustCard(bool canEdit) {
+    return Card(
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).primaryColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    Icons.tune,
+                    size: 20,
+                    color: Theme.of(context).primaryColor,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'ปรับแผนด้วย AI',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: _aiPromptCtrl,
+              enabled: canEdit && !_aiBusy,
+              minLines: 2,
+              maxLines: 5,
+              decoration: InputDecoration(
+                hintText:
+                    'พิมพ์คำสั่ง เช่น “เพิ่ม ICONSIAM ตอนบ่าย และเลื่อนเยาวราชไปค่ำ”',
+                filled: true,
+                fillColor: (canEdit && !_aiBusy)
+                    ? Colors.white
+                    : Colors.grey[100],
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: Colors.grey[300]!),
+                ),
+                contentPadding: const EdgeInsets.all(12),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  onPressed: (canEdit && !_aiBusy)
+                      ? () {
+                          setState(() {
+                            _aiPromptCtrl.text =
+                                'วันแรกขอเน้นย่านพระนครเพิ่มวัดโพธิ์กับวัดอรุณ แล้วลดคาเฟ่ 1 ที่';
+                          });
+                        }
+                      : null,
+                  icon: const Icon(Icons.lightbulb_outline),
+                  label: const Text('ตัวอย่าง'),
+                ),
+                const Spacer(),
+                ElevatedButton.icon(
+                  onPressed: (canEdit && !_aiBusy) ? _applyAiAdjust : null,
+                  icon: _aiBusy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.auto_fix_high_rounded),
+                  label: const Text('ปรับด้วย AI'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _emptyBox(String text) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[300]!),
+      ),
+      child: Center(
+        child: Text(
+          text,
+          style: TextStyle(
+            color: Colors.grey[600],
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildChecklistItem(
     Map<String, dynamic> item,
-    int index,
-    bool taskIsDone, {
-    required bool showHotelRadio,
+    int index, {
     required bool canEdit,
+    bool isHotel = false,
   }) {
-    final done = item['done'] == true;
     final expanded = item['expanded'] ?? true;
 
     final DateTime? start = _toDate(item['start_date']);
@@ -1050,174 +1259,202 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final double? lat = _toDouble(item['lat']);
     final double? lng = _toDouble(item['lng']);
     final String price = (item['price'] ?? '').toString();
-    final String notes = (item['notes'] ?? '').toString();
-    final String mapsUrl = (item['mapsUrl'] ?? '').toString();
-    final bool isHotel = (item['type'] == 'hotel');
+    final String notesRaw = (item['notes'] ?? '').toString();
+    final String notes = _stripMapLinks(notesRaw);
+    final String mapsUrl = (item['mapsUrl'] ?? '').toString(); // ไม่แสดงเป็นลิงก์แล้ว
 
     final String itemKey = _hotelKey(index, item);
-    final bool locked = taskIsDone || !canEdit;
+    final bool locked = !canEdit || _aiBusy;
+
+    final prevIndex = _findPrevSameType(index, isHotel);
+    final nextIndex = _findNextSameType(index, isHotel);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
-        color: done && !isHotel ? Colors.green[50] : Colors.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: done && !isHotel ? Colors.green[200]! : Colors.grey[200]!,
-        ),
+        border: Border.all(color: Colors.grey[200]!),
       ),
       child: Theme(
         data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
         child: ExpansionTile(
+          key: ObjectKey(item),
           initiallyExpanded: expanded,
           onExpansionChanged: (isExpanded) {
             setState(() => item['expanded'] = isExpanded);
           },
           leading: isHotel
-              ? (showHotelRadio
-                    ? Radio<String>(
-                        value: itemKey,
-                        groupValue: _selectedHotelKey,
-                        onChanged: locked
-                            ? null
-                            : (val) {
-                                setState(() {
-                                  _selectedHotelKey = val;
-                                  // sync flag ให้ item ที่เลือก
-                                  for (
-                                    var i = 0;
-                                    i < editedChecklist.length;
-                                    i++
-                                  ) {
-                                    final it = editedChecklist[i];
-                                    if (it['type'] == 'hotel') {
-                                      final key = _hotelKey(i, it);
-                                      it['selectedHotel'] = (key == val);
-                                    }
-                                  }
-                                });
-                              },
-                      )
-                    : const SizedBox())
-              : Checkbox(
-                  value: done,
+              ? Radio<String>(
+                  value: itemKey,
+                  groupValue: _selectedHotelKey,
                   onChanged: locked
                       ? null
                       : (val) {
                           setState(() {
-                            item['done'] = val ?? false;
-                            if (val == true) item['expanded'] = false;
-                            checklist = List<Map<String, dynamic>>.from(
-                              editedChecklist,
-                            );
+                            _selectedHotelKey = val;
+                            for (var i = 0; i < editedChecklist.length; i++) {
+                              final it = editedChecklist[i];
+                              if (it['type'] == 'hotel') {
+                                final key = _hotelKey(i, it);
+                                it['selectedHotel'] = (key == val);
+                              }
+                            }
                           });
                         },
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  activeColor: Colors.green,
-                ),
+                )
+              : const Icon(Icons.place_rounded, color: Colors.blueAccent),
           title: TextFormField(
-            readOnly: locked || (isHotel ? false : done),
+            readOnly: locked,
             initialValue: (item['title'] ?? '').toString(),
-            style: TextStyle(
-              color: (isHotel
-                  ? Colors.black87
-                  : done
-                  ? Colors.grey[600]
-                  : Colors.black87),
-              decoration: (!isHotel && done)
-                  ? TextDecoration.lineThrough
-                  : null,
+            style: const TextStyle(
+              color: Colors.black87,
               fontWeight: FontWeight.w500,
             ),
             decoration: const InputDecoration(
-              hintText: 'Subtask name',
+              hintText: 'ชื่อสถานที่',
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
             ),
             onChanged: (val) => item['title'] = val,
           ),
           trailing: !locked
-              ? IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  onPressed: () => removeChecklistItem(index),
-                  tooltip: 'deletesubtask'.tr,
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+                      onPressed: (prevIndex == null)
+                          ? null
+                          : () => _moveChecklistItem(
+                              index,
+                              up: true,
+                              isHotel: isHotel,
+                            ),
+                      tooltip: 'เลื่อนขึ้น',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.arrow_downward_rounded, size: 20),
+                      onPressed: (nextIndex == null)
+                          ? null
+                          : () => _moveChecklistItem(
+                              index,
+                              up: false,
+                              isHotel: isHotel,
+                            ),
+                      tooltip: 'เลื่อนลง',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete_outline, color: Colors.red),
+                      onPressed: () => removeChecklistItem(index),
+                      tooltip: 'ลบรายการ',
+                    ),
+                  ],
                 )
               : null,
           children: [
-            // Description
+            // Description (ตัดบรรทัดลิงก์ออกจากที่แสดง)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: TextFormField(
-                readOnly: locked || (!isHotel && done),
-                initialValue: (item['description'] ?? '').toString(),
-                style: TextStyle(
-                  color: (!isHotel && done) ? Colors.grey[600] : Colors.black87,
-                ),
+                readOnly: locked,
+                initialValue: _stripMapLinks((item['description'] ?? '').toString()),
+                style: const TextStyle(color: Colors.black87),
                 maxLines: 3,
                 decoration: InputDecoration(
-                  hintText: "subtaskdetails".tr,
+                  hintText: "รายละเอียด",
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: Colors.grey[300]!),
                   ),
                   filled: true,
-                  fillColor: (!isHotel && done) || locked
-                      ? Colors.grey[100]
-                      : Colors.white,
+                  fillColor: locked ? Colors.grey[100] : Colors.white,
                   contentPadding: const EdgeInsets.all(12),
                 ),
                 onChanged: (val) => item['description'] = val,
               ),
             ),
 
-            // Extra info chips: date/time/duration/price/notes
-            if (start != null ||
-                end != null ||
-                time.isNotEmpty ||
-                duration.isNotEmpty ||
-                price.isNotEmpty ||
-                notes.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (start != null || end != null)
-                      _miniInfoChip(
-                        icon: Icons.calendar_month_rounded,
-                        label: (start != null && end != null && end != start)
-                            ? '${_fmtDate(start)} - ${_fmtDate(end)}'
-                            : _fmtDate(start ?? end),
-                      ),
-                    if (time.isNotEmpty)
-                      _miniInfoChip(
-                        icon: Icons.access_time_rounded,
-                        label: time,
-                      ),
-                    if (duration.isNotEmpty)
-                      _miniInfoChip(
-                        icon: Icons.timelapse_rounded,
-                        label: duration,
-                      ),
-                    if (price.isNotEmpty)
-                      _miniInfoChip(
-                        icon: Icons.attach_money_rounded,
-                        label: price,
-                      ),
-                    if (notes.isNotEmpty)
-                      _miniInfoChip(
-                        icon: Icons.info_outline_rounded,
-                        label: notes,
-                        maxWidth: 220,
-                      ),
-                  ],
-                ),
+            // date/time/duration/price/notes
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _smallDateButton(
+                    label: 'เริ่ม',
+                    date: start,
+                    locked: locked,
+                    onTap: () async {
+                      if (locked) return;
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: start ?? editedStartDate,
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setState(() => item['start_date'] = picked);
+                      }
+                    },
+                  ),
+                  _smallDateButton(
+                    label: 'สิ้นสุด',
+                    date: end,
+                    locked: locked,
+                    onTap: () async {
+                      if (locked) return;
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: end ?? (start ?? editedEndDate),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2100),
+                      );
+                      if (picked != null) {
+                        setState(() => item['end_date'] = picked);
+                      }
+                    },
+                  ),
+                  _smallTextField(
+                    icon: Icons.access_time_rounded,
+                    hint: 'เวลา (14:30)',
+                    initial: time,
+                    locked: locked,
+                    width: 140,
+                    onChanged: (v) => item['time'] = v,
+                  ),
+                  _smallTextField(
+                    icon: Icons.timelapse_rounded,
+                    hint: 'ระยะเวลา (1ชม.)',
+                    initial: duration,
+                    locked: locked,
+                    width: 140,
+                    onChanged: (v) => item['duration'] = v,
+                  ),
+                  if (isHotel)
+                    _smallTextField(
+                      icon: Icons.attach_money_rounded,
+                      hint: 'ราคา',
+                      initial: price,
+                      locked: locked,
+                      width: 140,
+                      onChanged: (v) => item['price'] = v,
+                    ),
+                  if (notes.isNotEmpty || isHotel)
+                    _smallTextField(
+                      icon: Icons.info_outline_rounded,
+                      hint: 'โน้ต',
+                      initial: notes,
+                      locked: locked,
+                      width: 180,
+                      onChanged: (v) => item['notes'] = v,
+                    ),
+                ],
               ),
+            ),
 
-            // Map buttons & preview (view-only ก็ใช้ได้)
+            // Map buttons & preview (ไม่มีปุ่มลิงก์ Google Maps แล้ว)
             if ((lat != null && lng != null) || mapsUrl.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -1233,23 +1470,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           label: (item['title'] ?? '').toString(),
                         ),
                         icon: const Icon(Icons.map_rounded),
-                        label: Text('Open in Maps'.tr),
-                      ),
-                    if (mapsUrl.isNotEmpty)
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          final uri = Uri.parse(mapsUrl);
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          } else {
-                            _showErrorSnackbar('ไม่สามารถเปิดลิงก์แผนที่ได้');
-                          }
-                        },
-                        icon: const Icon(Icons.link_rounded),
-                        label: const Text('Google Maps'),
+                        label: const Text('เปิดในแผนที่'),
                       ),
                     if (lat != null && lng != null)
                       OutlinedButton.icon(
@@ -1269,7 +1490,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           );
                         },
                         icon: const Icon(Icons.fullscreen),
-                        label: Text('Preview'.tr),
+                        label: const Text('แสดงเต็มจอ'),
                       ),
                   ],
                 ),
@@ -1285,123 +1506,66 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     );
   }
 
-  // -------- Shared small widgets --------
-
-  Widget _miniInfoChip({
-    required IconData icon,
+  Widget _smallDateButton({
     required String label,
-    double? maxWidth,
+    required DateTime? date,
+    required bool locked,
+    required VoidCallback? onTap,
   }) {
-    final child = Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: 14, color: const Color(0xFF334155)),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            label,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, color: Color(0xFF334155)),
-          ),
+    return InkWell(
+      onTap: locked ? null : onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: locked ? Colors.grey[100] : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: Colors.grey[300]!),
         ),
-      ],
-    );
-
-    return Container(
-      constraints: BoxConstraints(maxWidth: maxWidth ?? 200),
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: child,
-    );
-  }
-
-  Widget _infoChip(IconData icon, String text) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF1F5F9),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: const Color(0xFF475569)),
-          const SizedBox(width: 6),
-          Text(
-            text,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF475569),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.calendar_today, size: 14),
+            const SizedBox(width: 6),
+            Text(
+              date != null ? _fmtDate(date) : label,
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 
-  // -------- Header --------
-  Widget _buildStatusHeaderBar(Map<String, dynamic> statusInfo) {
-    return Padding(
-      padding: const EdgeInsets.only(left: 8, right: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          IconButton(
-            onPressed: () => Get.back(),
-            icon: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: Colors.white,
-            ),
+  Widget _smallTextField({
+    required IconData icon,
+    required String hint,
+    required String initial,
+    required bool locked,
+    required ValueChanged<String> onChanged,
+    double? width,
+  }) {
+    return SizedBox(
+      width: width,
+      child: TextFormField(
+        readOnly: locked,
+        initialValue: initial,
+        decoration: InputDecoration(
+          prefixIcon: Icon(icon, size: 18),
+          hintText: hint,
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 10,
           ),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
-            ),
-            child: const Icon(
-              Icons.description_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: BorderSide(color: Colors.grey[300]!),
           ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'taskdetails'.tr,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 24,
-                  ),
-                ),
-                Text(
-                  '${'status'.tr}: ${statusOptions[status]?['label'] ?? '—'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          filled: true,
+          fillColor: locked ? Colors.grey[100] : Colors.white,
+        ),
+        onChanged: onChanged,
       ),
     );
   }

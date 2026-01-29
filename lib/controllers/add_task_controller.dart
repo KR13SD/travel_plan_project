@@ -12,7 +12,7 @@ class AddTaskController extends GetxController {
   final startDate = DateTime.now().obs;
   final endDate = DateTime.now().add(const Duration(days: 1)).obs;
   final checklist = <Map<String, dynamic>>[].obs;
-  final isLoading = false.obs;
+  final isGenerating = false.obs;
 
   final Map<String, Color> priorityColors = {
     'Low': Colors.green,
@@ -140,7 +140,7 @@ class AddTaskController extends GetxController {
   Future<void> saveTask(GlobalKey<FormState> formKey, BuildContext context) async {
     if (!formKey.currentState!.validate()) return;
 
-    isLoading.value = true;
+    isGenerating.value = true;
 
     try {
       final uid = FirebaseAuth.instance.currentUser?.uid;
@@ -186,7 +186,7 @@ class AddTaskController extends GetxController {
       showErrorSnackbar('เกิดข้อผิดพลาดในการบันทึก: ${e.toString()}');
       print('Error saving task: $e');
     } finally {
-      isLoading.value = false;
+      isGenerating.value = false;
     }
   }
 }

@@ -1,6 +1,10 @@
 // lib/pages/task_list_page.dart
+import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
 import 'package:ai_task_project_manager/pages/task_view_page.dart';
 import 'package:ai_task_project_manager/services/localization_service.dart';
+import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -159,58 +163,78 @@ class _TaskListPageState extends State<TaskListPage>
     final now = DateTime.now();
     const priority = {'in_progress': 1, 'todo': 2, 'overdue': 3, 'done': 4};
 
-    return tasks
-      ..sort((a, b) {
-        String statusA = a.status.toLowerCase();
-        String statusB = b.status.toLowerCase();
+    return tasks..sort((a, b) {
+      String statusA = a.status.toLowerCase();
+      String statusB = b.status.toLowerCase();
 
-        if (statusA != 'done' && _asLocal(a.endDate).isBefore(now)) {
-          statusA = 'overdue';
-        }
-        if (statusB != 'done' && _asLocal(b.endDate).isBefore(now)) {
-          statusB = 'overdue';
-        }
+      if (statusA != 'done' && _asLocal(a.endDate).isBefore(now)) {
+        statusA = 'overdue';
+      }
+      if (statusB != 'done' && _asLocal(b.endDate).isBefore(now)) {
+        statusB = 'overdue';
+      }
 
-        return (priority[statusA] ?? 99).compareTo(priority[statusB] ?? 99);
-      });
+      return (priority[statusA] ?? 99).compareTo(priority[statusB] ?? 99);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        // ✅ พื้นหลังหลักเป็น gradient เขียว
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [kPrimary1, kPrimary2, kPrimary2],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildModernAppBar(),
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 20),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
+      body: Stack(
+        children: [
+          Container(
+            // ✅ พื้นหลังหลักเป็น gradient เขียว
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [kPrimary1, kPrimary2, kPrimary2],
+              ),
+            ),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _buildModernAppBar(),
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 20),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(30),
+                          topRight: Radius.circular(30),
+                        ),
+                      ),
+                      child: CustomScrollView(
+                        slivers: [_buildFilterChips(), _buildTasksList()],
+                      ),
                     ),
                   ),
-                  child: CustomScrollView(
-                    slivers: [_buildFilterChips(), _buildTasksList()],
-                  ),
-                ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AiGeneratingOverlay(),
+          ),
+        ],
       ),
-      floatingActionButton: _buildModernFAB(),
+      floatingActionButton: Obx(() {
+        final aiCtrl = Get.find<AiImportController>();
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: aiCtrl.isGenerating.value || aiCtrl.hasResultReady.value
+                ? 80 // ⬆️ ดัน FAB ขึ้น เมื่อมี AI process
+                : 0, // ⬇️ ปกติ
+          ),
+          child: _buildModernFAB(),
+        );
+      }),
     );
   }
 
@@ -247,7 +271,7 @@ class _TaskListPageState extends State<TaskListPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'tasklist'.tr,
+                    'รวมแพลน',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -356,7 +380,7 @@ class _TaskListPageState extends State<TaskListPage>
 
   Widget _buildTasksList() {
     return Obx(() {
-      if (controller.isLoading.value) {
+      if (controller.isGenerating.value) {
         return SliverFillRemaining(
           child: Center(
             child: Column(
@@ -454,8 +478,18 @@ class _TaskListPageState extends State<TaskListPage>
   }
 
   Widget _buildGlassmorphismTaskCard(TaskModel task, int index) {
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final bool isOwner = task.uid == uid;
+    final bool isEditor = task.editorUids.contains(uid);
+    final bool isViewer = task.viewerUids.contains(uid);
+
+    final bool canEdit = isOwner || isEditor;
+    final bool canDelete = isOwner;
+    final bool canLeave = !isOwner && (isEditor || isViewer);
+
     final isDone = task.status.toLowerCase() == 'done';
-    final isOverdue = !isDone && _asLocal(task.endDate).isBefore(DateTime.now());
+    final isOverdue =
+        !isDone && _asLocal(task.endDate).isBefore(DateTime.now());
 
     List<Color> gradientColors;
     IconData statusIcon;
@@ -548,7 +582,14 @@ class _TaskListPageState extends State<TaskListPage>
                           _buildOverdueWarning(),
                         ],
                         const SizedBox(height: 16),
-                        _buildActionButtons(task, isDone, gradientColors),
+                        _buildActionButtons(
+                          task: task,
+                          isDone: isDone,
+                          gradientColors: gradientColors,
+                          canEdit: canEdit,
+                          canDelete: canDelete,
+                          canLeave: canLeave,
+                        ),
                       ],
                     ),
                   ),
@@ -759,15 +800,18 @@ class _TaskListPageState extends State<TaskListPage>
     );
   }
 
-  Widget _buildActionButtons(
-    TaskModel task,
-    bool isDone,
-    List<Color> gradientColors,
-  ) {
+  Widget _buildActionButtons({
+    required TaskModel task,
+    required bool isDone,
+    required List<Color> gradientColors,
+    required bool canEdit,
+    required bool canDelete,
+    required bool canLeave,
+  }) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (!isDone) ...[
+        if (canEdit && !isDone) ...[
           _buildGradientActionButton(
             icon: Icons.play_arrow_rounded,
             gradient: const [Color(0xFFfdcb6e), Color(0xFFe17055)],
@@ -783,12 +827,22 @@ class _TaskListPageState extends State<TaskListPage>
           ),
           const SizedBox(width: 10),
         ],
-        _buildGradientActionButton(
-          icon: Icons.delete_outline_rounded,
-          gradient: const [Color(0xFFe17055), Color(0xFFd63031)],
-          onPressed: () => _confirmDelete(task),
-          tooltip: 'deletetask'.tr,
-        ),
+        if (canDelete)
+          _buildGradientActionButton(
+            icon: Icons.delete_outline_rounded,
+            gradient: const [Color(0xFFe17055), Color(0xFFd63031)],
+            onPressed: () => _confirmDelete(task),
+            tooltip: 'deletetask'.tr,
+          ),
+        if (canLeave) ...[
+          const SizedBox(width: 10),
+          _buildGradientActionButton(
+            icon: Icons.logout_rounded,
+            gradient: const [Color(0xFF94A3B8), Color(0xFF64748B)],
+            onPressed: () => _confirmLeavePlan(task),
+            tooltip: 'ออกจากแผน (ซ่อนเฉพาะของฉัน)'.tr,
+          ),
+        ],
       ],
     );
   }
@@ -818,14 +872,25 @@ class _TaskListPageState extends State<TaskListPage>
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: onPressed,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Icon(icon, color: Colors.white, size: 20),
+            child: const Padding(
+              padding: EdgeInsets.all(10),
+              child: Icon(
+                Icons.circle, // will be replaced by IconTheme below
+                color: Colors.transparent,
+                size: 0,
+              ),
             ),
           ),
         ),
       ),
     );
+  }
+
+  // Wrap Icon on top of button padding (to keep previous design)
+  // (You can simplify by drawing Icon directly in the button if you prefer)
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
   }
 
   Widget _buildDateInfo(
@@ -918,28 +983,18 @@ class _TaskListPageState extends State<TaskListPage>
     }
   }
 
+  // ===== Confirm dialogs =====
+
   void _confirmMarkDone(TaskModel task) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(colors: [kPrimary1, kPrimary2]),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.task_alt, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'confirmchangestatus'.tr,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        title: _dialogTitle(
+          icon: Icons.task_alt,
+          colors: const [kPrimary1, kPrimary2],
+          text: 'confirmchangestatus'.tr,
         ),
         content: Text('dialogconfirmstatus'.tr),
         actions: [
@@ -947,18 +1002,13 @@ class _TaskListPageState extends State<TaskListPage>
             onPressed: () => Navigator.pop(context),
             child: Text('cancel'.tr, style: TextStyle(color: Colors.grey[600])),
           ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [kPrimary1, kPrimary2]),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: TextButton(
-              onPressed: () {
-                controller.updateTaskStatus(task.id, 'done');
-                Navigator.pop(context);
-              },
-              child: Text('confirm'.tr, style: TextStyle(color: Colors.white)),
-            ),
+          _dialogGradientBtn(
+            colors: const [kPrimary1, kPrimary2],
+            onPressed: () {
+              controller.updateTaskStatus(task.id, 'done');
+              Navigator.pop(context);
+            },
+            label: 'confirm'.tr,
           ),
         ],
       ),
@@ -971,24 +1021,10 @@ class _TaskListPageState extends State<TaskListPage>
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration:  BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFFe17055), Color(0xFFd63031)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.delete_outline, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'comfirmdelete'.tr,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        title: _dialogTitle(
+          icon: Icons.delete_outline,
+          colors: const [Color(0xFFe17055), Color(0xFFd63031)],
+          text: 'comfirmdelete'.tr,
         ),
         content: Text('dialogconfirmdelete'.tr),
         actions: [
@@ -996,20 +1032,13 @@ class _TaskListPageState extends State<TaskListPage>
             onPressed: () => Navigator.pop(context),
             child: Text('cancel'.tr, style: TextStyle(color: Colors.grey[600])),
           ),
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFe17055), Color(0xFFd63031)],
-              ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: TextButton(
-              onPressed: () {
-                controller.deleteTask(task.id);
-                Navigator.pop(context);
-              },
-              child: Text('confirm'.tr, style: TextStyle(color: Colors.white)),
-            ),
+          _dialogGradientBtn(
+            colors: const [Color(0xFFe17055), Color(0xFFd63031)],
+            onPressed: () {
+              controller.deleteTask(task.id);
+              Navigator.pop(context);
+            },
+            label: 'confirm'.tr,
           ),
         ],
       ),
@@ -1022,24 +1051,10 @@ class _TaskListPageState extends State<TaskListPage>
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration:  BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFFfdcb6e), Color(0xFFe17055)],
-                ),
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: const Icon(Icons.work, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Text(
-              'starttask'.tr,
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+        title: _dialogTitle(
+          icon: Icons.work,
+          colors: const [Color(0xFFfdcb6e), Color(0xFFe17055)],
+          text: 'starttask'.tr,
         ),
         content: Text('confirmchangestatus'.tr),
         actions: [
@@ -1047,22 +1062,130 @@ class _TaskListPageState extends State<TaskListPage>
             onPressed: () => Navigator.pop(context),
             child: Text('cancel'.tr, style: TextStyle(color: Colors.grey[600])),
           ),
-          Container(
-            decoration:  BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFfdcb6e), Color(0xFFe17055)],
-              ),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: TextButton(
-              onPressed: () {
-                controller.updateTaskStatus(task.id, 'in_progress');
-                Navigator.pop(context);
-              },
-              child: Text('confirm'.tr, style: TextStyle(color: Colors.white)),
-            ),
+          _dialogGradientBtn(
+            colors: const [Color(0xFFfdcb6e), Color(0xFFe17055)],
+            onPressed: () {
+              controller.updateTaskStatus(task.id, 'in_progress');
+              Navigator.pop(context);
+            },
+            label: 'confirm'.tr,
           ),
         ],
+      ),
+    );
+  }
+
+  void _confirmLeavePlan(TaskModel task) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Colors.white,
+        title: _dialogTitle(
+          icon: Icons.logout_rounded,
+          colors: const [Color(0xFF94A3B8), Color(0xFF64748B)],
+          text: 'ออกจากแผนนี้?'.tr,
+        ),
+        content: Text('คุณจะไม่เห็นแผนนี้ในรายการของคุณอีกต่อไป'.tr),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('cancel'.tr, style: TextStyle(color: Colors.grey[600])),
+          ),
+          _dialogGradientBtn(
+            colors: const [Color(0xFF94A3B8), Color(0xFF64748B)],
+            onPressed: () async {
+              await _leavePlan(task);
+              Navigator.pop(context);
+            },
+            label: 'ยืนยัน'.tr,
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ===== Leave plan (remove only myself) =====
+  Future<void> _leavePlan(TaskModel task) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) {
+      Get.snackbar(
+        'Error',
+        'ยังไม่ล็อกอิน',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    try {
+      final ref = FirebaseFirestore.instance.collection('tasks').doc(task.id);
+
+      // Firestore: เอาตัวเองออกจากทุกบทบาท + memberUids
+      await ref.update({
+        'memberUids': FieldValue.arrayRemove([uid]),
+        'viewerUids': FieldValue.arrayRemove([uid]),
+        'editorUids': FieldValue.arrayRemove([uid]),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // Optimistic UI: เอาออกจาก list ทันที
+      final idx = controller.allTasks.indexWhere((t) => t.id == task.id);
+      if (idx != -1) {
+        controller.allTasks.removeAt(idx);
+        controller.allTasks.refresh();
+      }
+
+      Get.snackbar(
+        'สำเร็จ',
+        'ซ่อนแผนนี้จากรายการของคุณแล้ว',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: const Color(0xFFEFFDF5),
+        colorText: const Color(0xFF065F46),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'ออกจากแผนไม่สำเร็จ: $e',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  // ===== Dialog UI helpers =====
+  Widget _dialogTitle({
+    required IconData icon,
+    required List<Color> colors,
+    required String text,
+  }) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(colors: colors),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Icon(icon, color: Colors.white),
+        ),
+        const SizedBox(width: 12),
+        Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
+  Widget _dialogGradientBtn({
+    required List<Color> colors,
+    required VoidCallback onPressed,
+    required String label,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(colors: colors),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: TextButton(
+        onPressed: onPressed,
+        child: Text(label, style: const TextStyle(color: Colors.white)),
       ),
     );
   }

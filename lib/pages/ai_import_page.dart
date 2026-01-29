@@ -1,6 +1,7 @@
+// ai_import_page.dart
+import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
 import 'package:ai_task_project_manager/controllers/dashboard_controller.dart';
-import 'package:ai_task_project_manager/models/task_model.dart';
-import 'package:ai_task_project_manager/services/ai_api_service.dart';
+import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -9,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:ai_task_project_manager/pages/ai_map_page.dart';
 import 'package:ai_task_project_manager/pages/map_preview.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 
 class AiImportPage extends StatefulWidget {
   const AiImportPage({super.key});
@@ -21,14 +23,10 @@ class _AiImportPageState extends State<AiImportPage>
     with TickerProviderStateMixin {
   final TextEditingController _controller = TextEditingController();
   final TextEditingController _mainTaskController = TextEditingController();
-
-  bool _loading = false;
-  List<Map<String, dynamic>> _previewTasks = [];
-  TaskModel? _aiMainTask;
-
-  // เก็บจุดจาก plan/hotel เพื่อเปิดแผนที่รวม
-  List<Map<String, dynamic>> _planPoints = [];
-  List<Map<String, dynamic>> _hotelPoints = [];
+  final AiImportController aiCtrl = Get.put(
+    AiImportController(),
+    permanent: true,
+  );
 
   // เลือกโรงแรมได้แค่ 1 รายการ
   int? _selectedHotelIndex;
@@ -42,6 +40,9 @@ class _AiImportPageState extends State<AiImportPage>
   final ScrollController _scrollCtrl = ScrollController();
   bool _showScrollToTop = false;
 
+  // ✅ เก็บ index รูปที่เลือกต่อการ์ด (กด thumbnail เปลี่ยนรูปหลัก)
+  final Map<String, int> _selectedImageIndex = {}; // "plan-0" / "hotel-2"
+
   final DateFormat dateFormatter = DateFormat('dd/MM/yyyy');
   final DateFormat timeFormatter = DateFormat('HH:mm');
 
@@ -52,6 +53,7 @@ class _AiImportPageState extends State<AiImportPage>
   @override
   void initState() {
     super.initState();
+    aiCtrl.isOnAiImportPage.value = true;
     _fadeCtrl = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -85,13 +87,14 @@ class _AiImportPageState extends State<AiImportPage>
     _controller.dispose();
     _mainTaskController.dispose();
     _scrollCtrl.dispose();
+    aiCtrl.isOnAiImportPage.value = false;
     super.dispose();
   }
 
   // ===== Helpers แก้ค่าจากการแตะ Chip =====
   Future<void> _pickSubtaskDate(int index) async {
     final current =
-        _previewTasks[index]['start_date'] as DateTime? ?? DateTime.now();
+        aiCtrl.previewTasks[index]['start_date'] as DateTime? ?? DateTime.now();
     final picked = await showDatePicker(
       context: context,
       initialDate: current,
@@ -99,7 +102,7 @@ class _AiImportPageState extends State<AiImportPage>
       lastDate: DateTime(2100),
     );
     if (picked != null) {
-      setState(() => _previewTasks[index]['start_date'] = picked);
+      setState(() => aiCtrl.previewTasks[index]['start_date'] = picked);
     }
   }
 
@@ -109,8 +112,9 @@ class _AiImportPageState extends State<AiImportPage>
     required String title,
     String? hint,
   }) async {
-    final controller =
-        TextEditingController(text: (_previewTasks[index][key] ?? '').toString());
+    final controller = TextEditingController(
+      text: (aiCtrl.previewTasks[index][key] ?? '').toString(),
+    );
     final ok = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -121,145 +125,25 @@ class _AiImportPageState extends State<AiImportPage>
           decoration: InputDecoration(hintText: hint ?? ''),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('cancel'.tr)),
-          ElevatedButton(onPressed: () => Navigator.pop(context, true), child: Text('confirm'.tr)),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('cancel'.tr),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('confirm'.tr),
+          ),
         ],
       ),
     );
     if (ok == true) {
-      setState(() => _previewTasks[index][key] = controller.text.trim());
+      setState(() => aiCtrl.previewTasks[index][key] = controller.text.trim());
     }
   }
 
   // ===== AI Generate =====
-  Future<void> _generateTasks() async {
-    final text = _controller.text.trim();
-    if (text.isEmpty) {
-      _showSnackbar('pleaseEnterText'.tr, isError: true);
-      return;
-    }
-
-    setState(() => _loading = true);
-    _slideCtrl.reset();
-
-    try {
-      final result = await AiApiService.fetchPlanAndHotels(text);
-      final TaskModel task = result.task;
-      _planPoints = result.planPoints;
-      _hotelPoints = result.hotelPoints;
-      _selectedHotelIndex = null;
-
-      // แปลง startDate / endDate ของ main task
-      DateTime? parseDate(dynamic date) {
-        if (date == null) return null;
-        if (date is Timestamp) return date.toDate();
-        if (date is DateTime) return date;
-        if (date is String) {
-          try {
-            if (date.contains('/')) {
-              final parts = date.split('/');
-              if (parts.length == 3) {
-                final dd = int.parse(parts[0]);
-                final mm = int.parse(parts[1]);
-                final yyyy = int.parse(parts[2]);
-                return DateTime(yyyy, mm, dd);
-              }
-            }
-            return DateTime.parse(date);
-          } catch (_) {
-            return null;
-          }
-        }
-        return null;
-      }
-
-      _aiMainTask = task.copyWith(
-        startDate: parseDate(task.startDate) ?? DateTime.now(),
-        endDate:
-            parseDate(task.endDate) ?? DateTime.now().add(const Duration(days: 7)),
-      );
-
-      // แปลง checklist
-      _previewTasks = [];
-      if (task.checklist.isNotEmpty) {
-        _previewTasks = task.checklist
-            .map((item) {
-              final Map<String, dynamic> taskItem = {};
-              taskItem.addAll(item);
-
-              DateTime? parseDate(dynamic v) {
-                if (v == null) return null;
-                if (v is Timestamp) return v.toDate();
-                if (v is DateTime) return v;
-                if (v is String) {
-                  try {
-                    if (v.contains('/')) {
-                      final parts = v.split('/');
-                      if (parts.length == 3) {
-                        final dd = int.parse(parts[0]);
-                        final mm = int.parse(parts[1]);
-                        final yyyy = int.parse(parts[2]);
-                        return DateTime(yyyy, mm, dd);
-                      }
-                    }
-                    return DateTime.parse(v);
-                  } catch (_) {
-                    return null;
-                  }
-                }
-                return null;
-              }
-
-              final start = parseDate(taskItem['start_date']);
-              final end = parseDate(taskItem['end_date']);
-
-              final lat = (taskItem['lat'] is num)
-                  ? (taskItem['lat'] as num).toDouble()
-                  : null;
-              final lng = (taskItem['lng'] is num)
-                  ? (taskItem['lng'] as num).toDouble()
-                  : null;
-              final time = taskItem['time']?.toString();
-              final duration = taskItem['duration']?.toString();
-
-              return {
-                'title': taskItem['title'] ?? '',
-                'description': taskItem['description'] ?? '',
-                'done': taskItem['done'] ?? false,
-                'expanded': taskItem['expanded'] ?? true,
-                'priority': taskItem['priority']?.toString() ?? 'medium',
-                'start_date': start,
-                'end_date': end,
-                'lat': lat,
-                'lng': lng,
-                'time': time,
-                'duration': duration,
-              };
-            })
-            .where((item) => item['title'].toString().isNotEmpty)
-            .toList();
-      }
-
-      if (_previewTasks.isNotEmpty) {
-        _mainTaskController.text = _aiMainTask!.title;
-        _fadeCtrl.forward();
-        _slideCtrl.forward();
-      } else {
-        _showSnackbar('noSubtasksFound'.tr, isError: true);
-      }
-    } catch (e) {
-      String errorMessage = e.toString();
-      try {
-        final regex = RegExp(r'"message"\s*:\s*"([^"]+)"');
-        final match = regex.firstMatch(errorMessage);
-        if (match != null) {
-          errorMessage = match.group(1)!;
-        }
-      } catch (_) {}
-      _showSnackbar('${'aiError'.tr}: $errorMessage', isError: true);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+  void _generateTasks() {
+    aiCtrl.generateFromText(_controller.text.trim());
   }
 
   // ===== Map helpers =====
@@ -283,7 +167,7 @@ class _AiImportPageState extends State<AiImportPage>
 
   // ===== Save =====
   Future<void> _saveToProject() async {
-    if (_previewTasks.isEmpty) return;
+    if (aiCtrl.previewTasks.isEmpty) return;
 
     final mainTaskTitle = _mainTaskController.text.trim();
     if (mainTaskTitle.isEmpty) {
@@ -291,18 +175,31 @@ class _AiImportPageState extends State<AiImportPage>
       return;
     }
 
-    setState(() => _loading = true);
+    setState(() => aiCtrl.isGenerating.value = true);
     try {
       final taskController = Get.find<DashboardController>();
       final uid = taskController.auth.currentUser?.uid;
       if (uid == null) throw Exception("User not logged in");
 
       // รวม checklist + โรงแรมที่เลือก (ถ้ามี)
-      final finalChecklist = List<Map<String, dynamic>>.from(_previewTasks);
+      final finalChecklist = List<Map<String, dynamic>>.from(
+        aiCtrl.previewTasks,
+      );
       if (_selectedHotelIndex != null) {
-        final h = _hotelPoints[_selectedHotelIndex!];
-        final double? lat = (h['lat'] is num) ? (h['lat'] as num).toDouble() : null;
-        final double? lng = (h['lng'] is num) ? (h['lng'] as num).toDouble() : null;
+        final h = aiCtrl.hotelPoints[_selectedHotelIndex!];
+        final double? lat = (h['lat'] is num)
+            ? (h['lat'] as num).toDouble()
+            : (h['lat'] is String ? double.tryParse(h['lat']) : null);
+        final double? lng = (h['lng'] is num)
+            ? (h['lng'] as num).toDouble()
+            : (h['lng'] is String ? double.tryParse(h['lng']) : null);
+
+        // ✅ รูปโรงแรม (ถ้ามี)
+        final String? image = h['image']?.toString();
+        final List<String> images = (h['images'] as List? ?? const [])
+            .map((e) => e.toString())
+            .where((u) => u.startsWith('http'))
+            .toList();
 
         finalChecklist.add({
           'type': 'hotel',
@@ -318,15 +215,21 @@ class _AiImportPageState extends State<AiImportPage>
           'start_date': null,
           'end_date': null,
           'priority': 'medium',
+          'image': (image != null && image.startsWith('http')) ? image : null,
+          'images': images,
         });
       }
 
-      final mainTask = _aiMainTask!.copyWith(
+      final mainTask = aiCtrl.aiMainTask!.copyWith(
         id: '',
         uid: uid,
         title: mainTaskTitle,
-        status: (_aiMainTask!.status.isEmpty ? 'todo' : _aiMainTask!.status),
-        priority: (_aiMainTask!.priority.isEmpty ? 'Low' : _aiMainTask!.priority),
+        status: (aiCtrl.aiMainTask!.status.isEmpty
+            ? 'todo'
+            : aiCtrl.aiMainTask!.status),
+        priority: (aiCtrl.aiMainTask!.priority.isEmpty
+            ? 'Low'
+            : aiCtrl.aiMainTask!.priority),
         checklist: finalChecklist, // Timestamp conversion handled in toJson()
       );
 
@@ -337,20 +240,21 @@ class _AiImportPageState extends State<AiImportPage>
 
       _showSnackbar(
         'savedMainTaskWithNSubtasks'.trParams({
-          'count': _previewTasks.length.toString(),
+          'count': aiCtrl.previewTasks.length.toString(),
         }),
       );
 
       if (!mounted) return;
       setState(() {
-        _previewTasks = [];
+        aiCtrl.previewTasks.clear();
         _controller.clear();
         _mainTaskController.clear();
-        _aiMainTask = null;
-        _planPoints = [];
-        _hotelPoints = [];
+        aiCtrl.aiMainTask = null;
+        aiCtrl.planPoints.clear();
+        aiCtrl.hotelPoints.clear();
         _selectedHotelIndex = null;
         _showScrollToTop = false;
+        _selectedImageIndex.clear();
       });
 
       await _scrollCtrl.animateTo(
@@ -361,7 +265,7 @@ class _AiImportPageState extends State<AiImportPage>
     } catch (e) {
       _showSnackbar('cannotSaveTask'.tr, isError: true);
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => aiCtrl.isGenerating.value = false);
     }
   }
 
@@ -467,131 +371,461 @@ class _AiImportPageState extends State<AiImportPage>
     }
   }
 
+  // ===== Better Image UI (Hero + Thumbnails) =====
+  Widget _glassIconButton({
+    required IconData icon,
+    required String tooltip,
+    required VoidCallback? onTap,
+  }) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(999),
+        child: Ink(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.18),
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: Colors.white.withOpacity(0.25)),
+          ),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeroImage({
+    required List<String> images,
+    required String cacheKey,
+    required String title,
+    String? subtitle,
+    String? tagText, // PLAN / HOTEL
+    Color? tagColor,
+    String? mapsUrl,
+    VoidCallback? onOpenMap,
+  }) {
+    final hasImages = images.isNotEmpty;
+    final selected = _selectedImageIndex[cacheKey] ?? 0;
+    final activeIndex = (selected < images.length) ? selected : 0;
+    final activeUrl = hasImages ? images[activeIndex] : null;
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.10),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: Stack(
+          children: [
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: activeUrl == null
+                  ? Container(
+                      color: const Color(0xFFF1F5F9),
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(
+                            Icons.image_outlined,
+                            size: 34,
+                            color: Color(0xFF94A3B8),
+                          ),
+                          SizedBox(height: 8),
+                          Text(
+                            'No image',
+                            style: TextStyle(
+                              color: Color(0xFF64748B),
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : CachedNetworkImage(
+                      imageUrl: activeUrl,
+                      fit: BoxFit.cover,
+                      placeholder: (_, __) => Container(
+                        color: const Color(0xFFF1F5F9),
+                        alignment: Alignment.center,
+                        child: const SizedBox(
+                          width: 26,
+                          height: 26,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                      errorWidget: (_, __, ___) => Container(
+                        color: const Color(0xFFF1F5F9),
+                        alignment: Alignment.center,
+                        child: const Icon(
+                          Icons.broken_image_rounded,
+                          size: 34,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                    ),
+            ),
+
+            Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.black.withOpacity(0.00),
+                      Colors.black.withOpacity(0.25),
+                      Colors.black.withOpacity(0.65),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            if (tagText != null && tagText.trim().isNotEmpty)
+              Positioned(
+                top: 10,
+                left: 10,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (tagColor ?? kPrimary2).withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    tagText.toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+              ),
+
+            Positioned(
+              top: 10,
+              right: 10,
+              child: Row(
+                children: [
+                  _glassIconButton(
+                    icon: Icons.fullscreen_rounded,
+                    tooltip: 'View image',
+                    onTap: activeUrl == null
+                        ? null
+                        : () {
+                            showDialog(
+                              context: context,
+                              builder: (_) => Dialog(
+                                insetPadding: const EdgeInsets.all(14),
+                                backgroundColor: Colors.black,
+                                child: Stack(
+                                  children: [
+                                    InteractiveViewer(
+                                      child: CachedNetworkImage(
+                                        imageUrl: activeUrl,
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                    Positioned(
+                                      top: 10,
+                                      right: 10,
+                                      child: IconButton(
+                                        onPressed: () => Navigator.pop(context),
+                                        icon: const Icon(
+                                          Icons.close_rounded,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                  ),
+                  const SizedBox(width: 8),
+                  if ((mapsUrl != null && mapsUrl.isNotEmpty) ||
+                      onOpenMap != null)
+                    _glassIconButton(
+                      icon: Icons.map_rounded,
+                      tooltip: 'Open map',
+                      onTap:
+                          onOpenMap ??
+                          () async {
+                            final uri = Uri.parse(mapsUrl!);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(
+                                uri,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            } else {
+                              _showSnackbar(
+                                'ไม่สามารถเปิดลิงก์แผนที่ได้',
+                                isError: true,
+                              );
+                            }
+                          },
+                    ),
+                ],
+              ),
+            ),
+
+            Positioned(
+              left: 12,
+              right: 12,
+              bottom: hasImages && images.length > 1 ? 54 : 12,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title.isEmpty ? '-' : title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 16,
+                    ),
+                  ),
+                  if (subtitle != null && subtitle.trim().isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white.withOpacity(0.9),
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+
+            if (hasImages && images.length > 1)
+              Positioned(
+                left: 10,
+                right: 10,
+                bottom: 10,
+                child: SizedBox(
+                  height: 38,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: images.length.clamp(0, 10),
+                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    itemBuilder: (_, i) {
+                      final isSelected = i == activeIndex;
+                      return GestureDetector(
+                        onTap: () =>
+                            setState(() => _selectedImageIndex[cacheKey] = i),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          width: 52,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: isSelected
+                                  ? Colors.white
+                                  : Colors.white.withOpacity(0.35),
+                              width: isSelected ? 2 : 1,
+                            ),
+                          ),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(9),
+                            child: CachedNetworkImage(
+                              imageUrl: images[i],
+                              fit: BoxFit.cover,
+                              placeholder: (_, __) => Container(
+                                color: Colors.white.withOpacity(0.10),
+                              ),
+                              errorWidget: (_, __, ___) => Container(
+                                color: Colors.white.withOpacity(0.10),
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.broken_image_rounded,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ===== Main build =====
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
-      floatingActionButton: _buildBottomSaveBar(),
-      body: Stack(
-        children: [
-          // พื้นหลัง + เนื้อหา
-          Container(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [kPrimary1, kPrimary2, kPrimary2],
+    return Obx(
+      () => Scaffold(
+        backgroundColor: Colors.transparent,
+        floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+        floatingActionButton: _buildBottomSaveBar(),
+        body: Stack(
+          children: [
+            // พื้นหลัง + เนื้อหา
+            Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [kPrimary1, kPrimary2, kPrimary2],
+                ),
               ),
-            ),
-            child: SafeArea(
-              child: Column(
-                children: [
-                  _buildModernHeader(theme),
-                  Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(top: 20),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFF8FAFC),
-                        borderRadius: BorderRadius.only(
-                          topLeft: Radius.circular(30),
-                          topRight: Radius.circular(30),
+              child: SafeArea(
+                child: Column(
+                  children: [
+                    _buildModernHeader(theme),
+                    Expanded(
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 20),
+                        decoration: const BoxDecoration(
+                          color: Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(30),
+                            topRight: Radius.circular(30),
+                          ),
                         ),
-                      ),
-                      child: Scrollbar(
-                        thumbVisibility: true,
-                        thickness: 6,
-                        radius: const Radius.circular(10),
-                        child: CustomScrollView(
-                          controller: _scrollCtrl,
-                          slivers: [
-                            SliverPadding(
-                              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-                              sliver: SliverList(
-                                delegate: SliverChildListDelegate([
-                                  _buildInputSection(theme),
-                                  const SizedBox(height: 20),
-                                  _buildGenerateButton(),
+                        child: Scrollbar(
+                          thumbVisibility: true,
+                          thickness: 6,
+                          radius: const Radius.circular(10),
+                          child: CustomScrollView(
+                            controller: _scrollCtrl,
+                            slivers: [
+                              SliverPadding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  20,
+                                  20,
+                                  20,
+                                  0,
+                                ),
+                                sliver: SliverList(
+                                  delegate: SliverChildListDelegate([
+                                    _buildInputSection(theme),
+                                    const SizedBox(height: 20),
+                                    _buildGenerateButton(),
 
-                                  // ปุ่มดูแผนที่รวม
-                                  if (_planPoints.isNotEmpty ||
-                                      _hotelPoints.isNotEmpty)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 12),
-                                      child: OutlinedButton.icon(
-                                        icon: const Icon(Icons.map_rounded),
-                                        label: Text('ดูแผนที่รวม (แผน + โรงแรม)'.tr),
-                                        onPressed: () {
-                                          final points =
-                                              [..._planPoints, ..._hotelPoints]
-                                                  .where((e) =>
-                                                      e['lat'] != null &&
-                                                      e['lng'] != null)
-                                                  .toList();
+                                    // ปุ่มดูแผนที่รวม
+                                    if (aiCtrl.planPoints.isNotEmpty ||
+                                        aiCtrl.hotelPoints.isNotEmpty)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 12),
+                                        child: OutlinedButton.icon(
+                                          icon: const Icon(Icons.map_rounded),
+                                          label: Text(
+                                            'ดูแผนที่รวม (แผน + โรงแรม)'.tr,
+                                          ),
+                                          onPressed: () {
+                                            final points =
+                                                [
+                                                      ...aiCtrl.planPoints,
+                                                      ...aiCtrl.hotelPoints,
+                                                    ]
+                                                    .where(
+                                                      (e) =>
+                                                          e['lat'] != null &&
+                                                          e['lng'] != null,
+                                                    )
+                                                    .toList();
 
-                                          if (points.isEmpty) {
-                                            _showSnackbar('ยังไม่มีพิกัดจาก AI', isError: true);
-                                            return;
-                                          }
+                                            if (points.isEmpty) {
+                                              _showSnackbar(
+                                                'ยังไม่มีพิกัดจาก AI',
+                                                isError: true,
+                                              );
+                                              return;
+                                            }
 
-                                          Navigator.of(context).push(
-                                            MaterialPageRoute(
-                                              builder: (_) => AiMapPage(
-                                                points: points
-                                                    .map((p) => {
+                                            Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) => AiMapPage(
+                                                  points: points
+                                                      .map(
+                                                        (p) => {
                                                           'title': p['title'],
                                                           'lat': p['lat'],
                                                           'lng': p['lng'],
                                                           'type': p['type'],
-                                                        })
-                                                    .toList(),
+                                                        },
+                                                      )
+                                                      .toList(),
+                                                ),
                                               ),
-                                            ),
-                                          );
-                                        },
+                                            );
+                                          },
+                                        ),
                                       ),
-                                    ),
 
-                                  const SizedBox(height: 28),
+                                    const SizedBox(height: 28),
 
-                                  if (_previewTasks.isNotEmpty)
-                                    FadeTransition(
-                                      opacity: _fadeAnim,
-                                      child: SlideTransition(
-                                        position: _slideAnim,
-                                        child: _buildMainTaskInfoSection(theme),
+                                    if (aiCtrl.previewTasks.isNotEmpty)
+                                      FadeTransition(
+                                        opacity: _fadeAnim,
+                                        child: SlideTransition(
+                                          position: _slideAnim,
+                                          child: _buildMainTaskInfoSection(
+                                            theme,
+                                          ),
+                                        ),
                                       ),
-                                    ),
-                                  if (_previewTasks.isNotEmpty)
-                                    const SizedBox(height: 20),
+                                    if (aiCtrl.previewTasks.isNotEmpty)
+                                      const SizedBox(height: 20),
 
-                                  _buildPreviewSection(theme),
-                                  const SizedBox(height: 16),
-                                  _buildHotelsSection(theme),
-                                  const SizedBox(height: 120), // กันชนใต้สุด
-                                ]),
+                                    _buildPreviewSection(theme),
+                                    const SizedBox(height: 16),
+                                    _buildHotelsSection(theme),
+                                    const SizedBox(height: 120),
+                                  ]),
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
 
-          // ปุ่มเลื่อนกลับขึ้นบนสุด
-          if (_showScrollToTop)
-            Positioned(
-              right: 16,
-              bottom: (_previewTasks.isNotEmpty ? 100 : 24),
-              child: SafeArea(top: false, child: _buildScrollToTopButton()),
-            ),
-        ],
+            // ปุ่มเลื่อนกลับขึ้นบนสุด
+            if (_showScrollToTop)
+              Positioned(
+                right: 16,
+                bottom: (aiCtrl.previewTasks.isNotEmpty ? 100 : 24),
+                child: SafeArea(top: false, child: _buildScrollToTopButton()),
+              ),
+            if (aiCtrl.isGenerating.value && !aiCtrl.isOnAiImportPage.value)
+              const AiGeneratingOverlay(),
+          ],
+        ),
       ),
     );
   }
@@ -672,7 +906,6 @@ class _AiImportPageState extends State<AiImportPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
             child: Row(
@@ -689,7 +922,6 @@ class _AiImportPageState extends State<AiImportPage>
               ],
             ),
           ),
-          // TextField
           Padding(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             child: Stack(
@@ -727,71 +959,76 @@ class _AiImportPageState extends State<AiImportPage>
   }
 
   Widget _buildGenerateButton() {
-    return Container(
-      height: 56,
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [kPrimary1, kPrimary2]),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: kPrimary1.withOpacity(0.35),
-            blurRadius: 14,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: _loading
-              ? null
-              : () {
-                  _dismissKeyboard();
-                  _generateTasks();
-                },
+    return Obx(() {
+      final isGenerating = aiCtrl.isGenerating.value;
+
+      return Container(
+        height: 56,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [kPrimary1, kPrimary2]),
           borderRadius: BorderRadius.circular(16),
-          child: Center(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                if (_loading)
-                  const SizedBox(
-                    width: 22,
-                    height: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+          boxShadow: [
+            BoxShadow(
+              color: kPrimary1.withOpacity(0.35),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: isGenerating
+                ? null
+                : () {
+                    _dismissKeyboard();
+                    _generateTasks();
+                  },
+            borderRadius: BorderRadius.circular(16),
+            child: Center(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (isGenerating)
+                    const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.5,
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                      ),
+                    )
+                  else
+                    const Icon(
+                      Icons.auto_awesome_rounded,
+                      color: Colors.white,
+                      size: 22,
                     ),
-                  )
-                else
-                  const Icon(
-                    Icons.auto_awesome_rounded,
-                    color: Colors.white,
-                    size: 22,
+                  const SizedBox(width: 10),
+                  Text(
+                    isGenerating ? 'processingWithAI'.tr : 'generateWithAI'.tr,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
                   ),
-                const SizedBox(width: 10),
-                Text(
-                  _loading ? 'processingWithAI'.tr : 'generateWithAI'.tr,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildMainTaskInfoSection(ThemeData theme) {
-    if (_aiMainTask == null) return const SizedBox();
+    if (aiCtrl.aiMainTask == null) return const SizedBox();
 
-    final mainTask = _aiMainTask!;
+    final mainTask = aiCtrl.aiMainTask!;
     final DateTime startDate = mainTask.startDate;
     final DateTime endDate = mainTask.endDate;
+    _mainTaskController.text = mainTask.title;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -810,7 +1047,6 @@ class _AiImportPageState extends State<AiImportPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
               Container(
@@ -849,7 +1085,6 @@ class _AiImportPageState extends State<AiImportPage>
 
           const SizedBox(height: 16),
 
-          // Task Name Input
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -894,7 +1129,7 @@ class _AiImportPageState extends State<AiImportPage>
                     fontWeight: FontWeight.w600,
                     color: Color(0xFF111827),
                   ),
-                  onChanged: (_) {}, // keep controller value
+                  onChanged: (_) {},
                 ),
               ],
             ),
@@ -902,7 +1137,6 @@ class _AiImportPageState extends State<AiImportPage>
 
           const SizedBox(height: 12),
 
-          // Dates
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -989,11 +1223,11 @@ class _AiImportPageState extends State<AiImportPage>
   }
 
   Widget _buildPreviewSection(ThemeData theme) {
-    final hasItem = _previewTasks.isNotEmpty;
+    final hasItem = aiCtrl.previewTasks.isNotEmpty;
 
     return Container(
       constraints: hasItem ? const BoxConstraints(maxHeight: 800) : null,
-      child: _previewTasks.isEmpty
+      child: aiCtrl.previewTasks.isEmpty
           ? Align(
               alignment: Alignment.topCenter,
               child: _buildEmptyPreview(theme),
@@ -1005,7 +1239,6 @@ class _AiImportPageState extends State<AiImportPage>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Section title
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
                       child: Row(
@@ -1034,7 +1267,7 @@ class _AiImportPageState extends State<AiImportPage>
                               borderRadius: BorderRadius.circular(8),
                             ),
                             child: Text(
-                              '${_previewTasks.length} ${'items'.tr}',
+                              '${aiCtrl.previewTasks.length} ${'items'.tr}',
                               style: const TextStyle(
                                 color: kPrimary1,
                                 fontWeight: FontWeight.w600,
@@ -1045,13 +1278,12 @@ class _AiImportPageState extends State<AiImportPage>
                         ],
                       ),
                     ),
-                    // List
                     Expanded(
                       child: ListView.separated(
-                        itemCount: _previewTasks.length,
+                        itemCount: aiCtrl.previewTasks.length,
                         separatorBuilder: (_, __) => const SizedBox(height: 16),
                         itemBuilder: (context, index) {
-                          final task = _previewTasks[index];
+                          final task = aiCtrl.previewTasks[index];
                           return _buildEnhancedTaskCard(task, index, theme);
                         },
                       ),
@@ -1063,6 +1295,25 @@ class _AiImportPageState extends State<AiImportPage>
     );
   }
 
+  DateTime? safeDate(dynamic v) {
+    if (v == null) return null;
+    if (v is DateTime) return v;
+    if (v is String) return DateTime.tryParse(v);
+    return null;
+  }
+
+  double? safeDouble(dynamic v) {
+    if (v == null) return null;
+    if (v is num) return v.toDouble();
+    if (v is String) return double.tryParse(v);
+    return null;
+  }
+
+  String safePriority(dynamic v) {
+    final p = (v ?? 'medium').toString().toLowerCase();
+    return ['high', 'medium', 'low'].contains(p) ? p : 'medium';
+  }
+
   Widget _buildEnhancedTaskCard(
     Map<String, dynamic> task,
     int index,
@@ -1070,12 +1321,23 @@ class _AiImportPageState extends State<AiImportPage>
   ) {
     final rawTitle = (task['title']?.toString() ?? '').trim();
     final rawDesc = (task['description']?.toString() ?? '').trim();
-    final priority = (task['priority']?.toString() ?? 'medium').toLowerCase();
     final time = formatTime(task['time']?.toString());
     final duration = formatDuration(task['duration']?.toString());
-    final startDate = task['start_date'] as DateTime?;
-    final lat = task['lat'] as double?;
-    final lng = task['lng'] as double?;
+    final DateTime? startDate = safeDate(task['start_date']);
+    final double? lat = safeDouble(task['lat']);
+    final double? lng = safeDouble(task['lng']);
+    final String priority = safePriority(task['priority']);
+
+    final String? image = task['image']?.toString();
+    final List<String> images = (task['images'] as List? ?? const [])
+        .map((e) => e.toString())
+        .where((u) => u.startsWith('http'))
+        .toList();
+
+    final List<String> imagesAll = <String>[
+      if (image != null && image.startsWith('http')) image,
+      ...images,
+    ].toSet().toList();
 
     // ปรับเคส "name: , description:" ที่อาจติดมา
     String displayTitle = rawTitle;
@@ -1124,7 +1386,6 @@ class _AiImportPageState extends State<AiImportPage>
             ),
             child: Row(
               children: [
-                // Task Number Badge
                 Container(
                   width: 28,
                   height: 28,
@@ -1147,7 +1408,6 @@ class _AiImportPageState extends State<AiImportPage>
                 ),
                 const SizedBox(width: 10),
 
-                // Priority Badge (Dropdown)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),
                   decoration: BoxDecoration(
@@ -1162,26 +1422,46 @@ class _AiImportPageState extends State<AiImportPage>
                       value: priority,
                       items: const [
                         DropdownMenuItem(value: 'high', child: Text('HIGH')),
-                        DropdownMenuItem(value: 'medium', child: Text('MEDIUM')),
+                        DropdownMenuItem(
+                          value: 'medium',
+                          child: Text('MEDIUM'),
+                        ),
                         DropdownMenuItem(value: 'low', child: Text('LOW')),
                       ],
-                      onChanged: (val) =>
-                          setState(() => _previewTasks[index]['priority'] = val ?? 'medium'),
+                      onChanged: (val) => setState(
+                        () => aiCtrl.previewTasks[index]['priority'] =
+                            val ?? 'medium',
+                      ),
                     ),
                   ),
                 ),
 
                 const Spacer(),
 
-                // ลบ subtask
                 IconButton(
                   tooltip: 'deletesubtask'.tr,
-                  onPressed: () => setState(() => _previewTasks.removeAt(index)),
+                  onPressed: () =>
+                      setState(() => aiCtrl.previewTasks.removeAt(index)),
                   icon: const Icon(Icons.delete_outline, color: Colors.red),
                 ),
               ],
             ),
           ),
+
+          // ✅ Better Image UI
+          if (imagesAll.isNotEmpty)
+            _buildHeroImage(
+              images: imagesAll,
+              cacheKey: 'plan-$index',
+              title: displayTitle,
+              subtitle: displayDescription,
+              tagText: 'PLAN',
+              tagColor: kPrimary2,
+              mapsUrl: task['mapsUrl']?.toString(),
+              onOpenMap: (lat != null && lng != null)
+                  ? () => _openExternalMap(lat, lng, label: displayTitle)
+                  : null,
+            ),
 
           // Main Content (Editable)
           Padding(
@@ -1189,10 +1469,10 @@ class _AiImportPageState extends State<AiImportPage>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Title (editable)
                 TextFormField(
-                  initialValue:
-                      displayTitle.isNotEmpty ? displayTitle : 'noTaskName'.tr,
+                  initialValue: displayTitle.isNotEmpty
+                      ? displayTitle
+                      : 'noTaskName'.tr,
                   decoration: const InputDecoration(
                     hintText: 'Task title',
                     border: InputBorder.none,
@@ -1203,10 +1483,10 @@ class _AiImportPageState extends State<AiImportPage>
                     fontSize: 16,
                     height: 1.4,
                   ),
-                  onChanged: (v) => _previewTasks[index]['title'] = v.trim(),
+                  onChanged: (v) =>
+                      aiCtrl.previewTasks[index]['title'] = v.trim(),
                 ),
 
-                // Description (editable)
                 TextFormField(
                   initialValue: displayDescription,
                   maxLines: null,
@@ -1220,14 +1500,13 @@ class _AiImportPageState extends State<AiImportPage>
                     fontSize: 14,
                   ),
                   onChanged: (v) =>
-                      _previewTasks[index]['description'] = v.trim(),
+                      aiCtrl.previewTasks[index]['description'] = v.trim(),
                 ),
 
                 const SizedBox(height: 8),
                 const Divider(height: 1, color: Color(0xFFE5E7EB)),
                 const SizedBox(height: 12),
 
-                // Info Grid (Chips + edit on tap)
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -1245,8 +1524,10 @@ class _AiImportPageState extends State<AiImportPage>
                       label: (time.isEmpty && duration.isEmpty)
                           ? '—'
                           : (duration.isNotEmpty
-                              ? (time.isEmpty ? duration : '$time ($duration)')
-                              : time),
+                                ? (time.isEmpty
+                                      ? duration
+                                      : '$time ($duration)')
+                                : time),
                       color: const Color(0xFFF59E0B),
                       onTap: () async {
                         await _editStringField(
@@ -1255,7 +1536,6 @@ class _AiImportPageState extends State<AiImportPage>
                           title: 'เวลานัดหมาย',
                           hint: 'เช่น 09:30',
                         );
-                        // ถ้าต้องแก้ duration ด้วย เรียก _editStringField เพิ่มเติมได้
                       },
                     ),
 
@@ -1284,7 +1564,10 @@ class _AiImportPageState extends State<AiImportPage>
                           onPressed: () =>
                               _openExternalMap(lat, lng, label: displayTitle),
                           icon: const Icon(Icons.map_rounded, size: 16),
-                          label: Text('Open'.tr, style: const TextStyle(fontSize: 13)),
+                          label: Text(
+                            'Open'.tr,
+                            style: const TextStyle(fontSize: 13),
+                          ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                           ),
@@ -1309,7 +1592,10 @@ class _AiImportPageState extends State<AiImportPage>
                             );
                           },
                           icon: const Icon(Icons.fullscreen, size: 16),
-                          label: Text('Preview'.tr, style: const TextStyle(fontSize: 13)),
+                          label: Text(
+                            'Preview'.tr,
+                            style: const TextStyle(fontSize: 13),
+                          ),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 8),
                           ),
@@ -1406,7 +1692,7 @@ class _AiImportPageState extends State<AiImportPage>
 
   // ปุ่ม SAVE ลอย
   Widget _buildBottomSaveBar() {
-    if (_previewTasks.isEmpty) return const SizedBox.shrink();
+    if (aiCtrl.previewTasks.isEmpty) return const SizedBox.shrink();
 
     return SafeArea(
       child: Container(
@@ -1426,13 +1712,13 @@ class _AiImportPageState extends State<AiImportPage>
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: _loading ? null : _saveToProject,
+            onTap: aiCtrl.isGenerating.value ? null : _saveToProject,
             borderRadius: BorderRadius.circular(16),
             child: Center(
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  if (_loading)
+                  if (aiCtrl.isGenerating.value)
                     const SizedBox(
                       width: 22,
                       height: 22,
@@ -1449,7 +1735,9 @@ class _AiImportPageState extends State<AiImportPage>
                     ),
                   const SizedBox(width: 10),
                   Text(
-                    _loading ? 'processingWithAI'.tr : 'saveMainTask'.tr,
+                    aiCtrl.isGenerating.value
+                        ? 'processingWithAI'.tr
+                        : 'saveMainTask'.tr,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
@@ -1466,7 +1754,7 @@ class _AiImportPageState extends State<AiImportPage>
   }
 
   Widget _buildHotelsSection(ThemeData theme) {
-    if (_hotelPoints.isEmpty) return const SizedBox.shrink();
+    if (aiCtrl.hotelPoints.isEmpty) return const SizedBox.shrink();
 
     return Container(
       margin: const EdgeInsets.only(top: 12),
@@ -1486,7 +1774,6 @@ class _AiImportPageState extends State<AiImportPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Row(
             children: [
               Container(
@@ -1524,13 +1811,16 @@ class _AiImportPageState extends State<AiImportPage>
                 ),
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: kPrimary1.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
-                  '${_hotelPoints.length} ${'items'.tr}',
+                  '${aiCtrl.hotelPoints.length} ${'items'.tr}',
                   style: const TextStyle(
                     color: kPrimary1,
                     fontWeight: FontWeight.w700,
@@ -1543,197 +1833,262 @@ class _AiImportPageState extends State<AiImportPage>
 
           const SizedBox(height: 12),
 
-          // รายการโรงแรม (เลือกได้ 1 รายการ)
           ListView.separated(
-            itemCount: _hotelPoints.length,
+            itemCount: aiCtrl.hotelPoints.length,
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             separatorBuilder: (_, __) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
-              final h = _hotelPoints[index];
+              final h = aiCtrl.hotelPoints[index];
               final String title = (h['title'] ?? '').toString();
               final String notes = (h['notes'] ?? '').toString();
               final String price = (h['price'] ?? '').toString();
               final bool reserve = h['reserve'] == true;
               final String mapsUrl = (h['mapsUrl'] ?? '').toString();
-              final double? lat =
-                  (h['lat'] is num) ? (h['lat'] as num).toDouble() : null;
-              final double? lng =
-                  (h['lng'] is num) ? (h['lng'] as num).toDouble() : null;
+
+              final double? lat = (h['lat'] is num)
+                  ? (h['lat'] as num).toDouble()
+                  : (h['lat'] is String ? double.tryParse(h['lat']) : null);
+              final double? lng = (h['lng'] is num)
+                  ? (h['lng'] as num).toDouble()
+                  : (h['lng'] is String ? double.tryParse(h['lng']) : null);
 
               final selected = _selectedHotelIndex == index;
 
+              final String? image = h['image']?.toString();
+              final List<String> images = (h['images'] as List? ?? const [])
+                  .map((e) => e.toString())
+                  .where((u) => u.startsWith('http'))
+                  .toList();
+
+              final List<String> imagesAll = <String>[
+                if (image != null && image.startsWith('http')) image,
+                ...images,
+              ].toSet().toList();
+
               return Container(
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFFEEF2FF) : const Color(0xFFF8FAFC),
+                  color: selected
+                      ? const Color(0xFFEEF2FF)
+                      : const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
                     color: selected ? kPrimary2 : const Color(0xFFE2E8F0),
                     width: selected ? 2 : 1,
                   ),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.all(14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // เลือกด้วย Radio + ชื่อ + ป้ายจอง
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Radio<int>(
-                            value: index,
-                            groupValue: _selectedHotelIndex,
-                            onChanged: (v) => setState(() => _selectedHotelIndex = v),
-                            activeColor: kPrimary2,
-                          ),
-                          const SizedBox(width: 4),
-                          const Icon(Icons.bed_rounded, color: kPrimary2, size: 18),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              title.isEmpty ? 'Hotel' : title,
-                              style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: selected ? kPrimary2 : const Color(0xFF111827),
-                              ),
-                            ),
-                          ),
-                          if (reserve)
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFEF3C7),
-                                borderRadius: BorderRadius.circular(8),
-                                border: Border.all(color: const Color(0xFFF59E0B)),
-                              ),
-                              child: Row(
-                                children: const [
-                                  Icon(Icons.event_available_rounded, size: 14, color: Color(0xFFF59E0B)),
-                                  SizedBox(width: 4),
-                                  Text(
-                                    'ควรจองล่วงหน้า',
-                                    style: TextStyle(
-                                      color: Color(0xFFB45309),
-                                      fontWeight: FontWeight.w700,
-                                      fontSize: 11,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                        ],
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (imagesAll.isNotEmpty)
+                      _buildHeroImage(
+                        images: imagesAll,
+                        cacheKey: 'hotel-$index',
+                        title: title,
+                        subtitle: notes,
+                        tagText: 'HOTEL',
+                        tagColor: const Color(0xFF0EA5E9),
+                        mapsUrl: mapsUrl,
+                        onOpenMap: (lat != null && lng != null)
+                            ? () => _openExternalMap(lat, lng, label: title)
+                            : (mapsUrl.isNotEmpty ? null : null),
                       ),
 
-                      const SizedBox(height: 8),
-
-                      // ราคา / หมายเหตุ
-                      if (price.isNotEmpty)
-                        Row(
-                          children: [
-                            const Icon(Icons.attach_money_rounded, size: 16, color: Color(0xFF059669)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                price,
-                                style: const TextStyle(
-                                  color: Color(0xFF065F46),
-                                  fontWeight: FontWeight.w600,
+                    Padding(
+                      padding: const EdgeInsets.all(14),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Radio<int>(
+                                value: index,
+                                groupValue: _selectedHotelIndex,
+                                onChanged: (v) =>
+                                    setState(() => _selectedHotelIndex = v),
+                                activeColor: kPrimary2,
+                              ),
+                              const SizedBox(width: 4),
+                              const Icon(
+                                Icons.bed_rounded,
+                                color: kPrimary2,
+                                size: 18,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  title.isEmpty ? 'Hotel' : title,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    color: selected
+                                        ? kPrimary2
+                                        : const Color(0xFF111827),
+                                  ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      if (price.isNotEmpty) const SizedBox(height: 6),
-
-                      if (notes.isNotEmpty)
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Icon(Icons.info_outline_rounded, size: 16, color: Color(0xFF4B5563)),
-                            const SizedBox(width: 6),
-                            Expanded(
-                              child: Text(
-                                notes,
-                                style: const TextStyle(color: Color(0xFF374151), height: 1.5),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                      // ปุ่มแผนที่
-                      if ((lat != null && lng != null) || mapsUrl.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            if (lat != null && lng != null)
-                              ElevatedButton.icon(
-                                onPressed: () => _openExternalMap(lat, lng, label: title),
-                                icon: const Icon(Icons.map_rounded),
-                                label: Text('Open in Maps'.tr),
-                              ),
-                            if ((lat != null && lng != null) && mapsUrl.isNotEmpty)
-                              const SizedBox(width: 8),
-                            if (mapsUrl.isNotEmpty)
-                              OutlinedButton.icon(
-                                onPressed: () async {
-                                  final uri = Uri.parse(mapsUrl);
-                                  if (await canLaunchUrl(uri)) {
-                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                  } else {
-                                    _showSnackbar('ไม่สามารถเปิดลิงก์แผนที่ได้', isError: true);
-                                  }
-                                },
-                                icon: const Icon(Icons.link_rounded),
-                                label: const Text('Google Maps'),
-                              ),
-                            if (lat != null && lng != null) ...[
-                              const SizedBox(width: 8),
-                              OutlinedButton.icon(
-                                onPressed: () {
-                                  Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => AiMapPage(
-                                        points: [
-                                          {
-                                            'title': title,
-                                            'lat': lat,
-                                            'lng': lng,
-                                            'type': 'hotel',
-                                          },
-                                        ],
-                                      ),
+                              if (reserve)
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFEF3C7),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: const Color(0xFFF59E0B),
                                     ),
-                                  );
-                                },
-                                icon: const Icon(Icons.fullscreen),
-                                label: Text('Preview'.tr),
-                              ),
+                                  ),
+                                  child: Row(
+                                    children: const [
+                                      Icon(
+                                        Icons.event_available_rounded,
+                                        size: 14,
+                                        color: Color(0xFFF59E0B),
+                                      ),
+                                      SizedBox(width: 4),
+                                      Text(
+                                        'ควรจองล่วงหน้า',
+                                        style: TextStyle(
+                                          color: Color(0xFFB45309),
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
                             ],
-                          ],
-                        ),
-                      ],
+                          ),
 
-                      // แผนที่ย่อของโรงแรม
-                      if (lat != null && lng != null) ...[
-                        const SizedBox(height: 12),
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: MapPreview(lat: lat, lng: lng),
-                        ),
-                      ],
-                    ],
-                  ),
+                          const SizedBox(height: 8),
+
+                          if (price.isNotEmpty)
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.attach_money_rounded,
+                                  size: 16,
+                                  color: Color(0xFF059669),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    price,
+                                    style: const TextStyle(
+                                      color: Color(0xFF065F46),
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          if (price.isNotEmpty) const SizedBox(height: 6),
+
+                          if (notes.isNotEmpty)
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Icon(
+                                  Icons.info_outline_rounded,
+                                  size: 16,
+                                  color: Color(0xFF4B5563),
+                                ),
+                                const SizedBox(width: 6),
+                                Expanded(
+                                  child: Text(
+                                    notes,
+                                    style: const TextStyle(
+                                      color: Color(0xFF374151),
+                                      height: 1.5,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+
+                          if ((lat != null && lng != null) ||
+                              mapsUrl.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                if (lat != null && lng != null)
+                                  ElevatedButton.icon(
+                                    onPressed: () => _openExternalMap(
+                                      lat,
+                                      lng,
+                                      label: title,
+                                    ),
+                                    icon: const Icon(Icons.map_rounded),
+                                    label: Text('Open in Maps'.tr),
+                                  ),
+                                if (mapsUrl.isNotEmpty)
+                                  OutlinedButton.icon(
+                                    onPressed: () async {
+                                      final uri = Uri.parse(mapsUrl);
+                                      if (await canLaunchUrl(uri)) {
+                                        await launchUrl(
+                                          uri,
+                                          mode: LaunchMode.externalApplication,
+                                        );
+                                      } else {
+                                        _showSnackbar(
+                                          'ไม่สามารถเปิดลิงก์แผนที่ได้',
+                                          isError: true,
+                                        );
+                                      }
+                                    },
+                                    icon: const Icon(Icons.link_rounded),
+                                    label: const Text('Google Maps'),
+                                  ),
+                                if (lat != null && lng != null)
+                                  OutlinedButton.icon(
+                                    onPressed: () {
+                                      Navigator.of(context).push(
+                                        MaterialPageRoute(
+                                          builder: (_) => AiMapPage(
+                                            points: [
+                                              {
+                                                'title': title,
+                                                'lat': lat,
+                                                'lng': lng,
+                                                'type': 'hotel',
+                                              },
+                                            ],
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    icon: const Icon(Icons.fullscreen),
+                                    label: Text('Preview'.tr),
+                                  ),
+                              ],
+                            ),
+                          ],
+
+                          if (lat != null && lng != null) ...[
+                            const SizedBox(height: 12),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: MapPreview(lat: lat, lng: lng),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               );
             },
           ),
 
-          // ปุ่มเปิดแผนที่รวม (เฉพาะโรงแรม)
-          if (_hotelPoints.where((e) => e['lat'] != null && e['lng'] != null).isNotEmpty) ...[
+          if (aiCtrl.hotelPoints
+              .where((e) => e['lat'] != null && e['lng'] != null)
+              .isNotEmpty) ...[
             const SizedBox(height: 14),
             Align(
               alignment: Alignment.centerRight,
@@ -1741,15 +2096,18 @@ class _AiImportPageState extends State<AiImportPage>
                 icon: const Icon(Icons.map_outlined),
                 label: const Text('ดูเฉพาะโรงแรมบนแผนที่'),
                 onPressed: () {
-                  final points = _hotelPoints
+                  final points = aiCtrl.hotelPoints
                       .where((e) => e['lat'] != null && e['lng'] != null)
-                      .map((p) => {
-                            'title': p['title'],
-                            'lat': p['lat'],
-                            'lng': p['lng'],
-                            'type': 'hotel',
-                          })
+                      .map(
+                        (p) => {
+                          'title': p['title'],
+                          'lat': p['lat'],
+                          'lng': p['lng'],
+                          'type': 'hotel',
+                        },
+                      )
                       .toList();
+
                   Navigator.of(context).push(
                     MaterialPageRoute(
                       builder: (_) => AiMapPage(points: points),

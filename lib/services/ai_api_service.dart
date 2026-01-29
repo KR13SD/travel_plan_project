@@ -3,9 +3,9 @@ import 'package:http/http.dart' as http;
 import '../models/task_model.dart';
 
 class AiPlanResult {
-  final TaskModel task;                        // ใช้ workflow เดิมต่อได้
-  final List<Map<String, dynamic>> planPoints;  // จุดจาก itinerary (attraction/restaurant/other)
-  final List<Map<String, dynamic>> hotelPoints; // จุดจาก hotel_output (type='hotel')
+  final TaskModel task;
+  final List<Map<String, dynamic>> planPoints;
+  final List<Map<String, dynamic>> hotelPoints;
 
   AiPlanResult({
     required this.task,
@@ -20,21 +20,20 @@ class AiApiService {
     defaultValue: 'http://10.0.2.2:8000',
   );
 
-  /// ========== PUBLIC: ใช้แบบเดิม คืน TaskModel ==========
+  // ---------- PUBLIC ----------
   static Future<TaskModel> fetchTaskFromAi(String input) async {
     final data = await _callMakePlan(input);
     final planOutput = _readPlanOutput(data);
     return _buildTaskFromPlanOutput(planOutput);
   }
 
-  /// ========== PUBLIC: ใช้แยก Plan/Hotel ในครั้งเดียว ==========
   static Future<AiPlanResult> fetchPlanAndHotels(String input) async {
     final data = await _callMakePlan(input);
     final planOutput = _readPlanOutput(data);
 
     final task = _buildTaskFromPlanOutput(planOutput);
     final planPoints = _extractPlanPoints(planOutput);
-    final hotelPoints = _extractHotelPoints(data); // ดึงของ "แผนแรก"
+    final hotelPoints = _extractHotelPoints(data);
 
     return AiPlanResult(
       task: task,
@@ -43,15 +42,45 @@ class AiApiService {
     );
   }
 
-  // ======== INTERNALS ========
+  /// 👇 อันนี้คืออันที่ TaskDetailPage จะใช้
+  static Future<Map<String, dynamic>> adjustPlan(Map<String, dynamic> body) async {
+    final taskId = (body['task']?['id'] ?? '').toString();
+    final instruction = (body['prompt'] ?? '').toString();
+    final checklistNow =
+        (body['task']?['checklist'] as List?)?.whereType<Map<String, dynamic>>().toList()
+        ?? <Map<String, dynamic>>[];
 
+    final startDateStr = (body['task']?['startDate'] ?? body['task']?['start_date'])?.toString();
+    final endDateStr   = (body['task']?['endDate'] ?? body['task']?['end_date'])?.toString();
+
+    final startDate = startDateStr != null ? DateTime.parse(startDateStr) : DateTime.now();
+    final endDate   = endDateStr   != null ? DateTime.parse(endDateStr)   : startDate.add(const Duration(days: 1));
+
+    final newChecklist = await changePlan(
+      taskId: taskId.isEmpty ? 'local' : taskId,
+      instruction: instruction,
+      checklistNow: checklistNow,
+      startDate: startDate,
+      endDate: endDate,
+    );
+
+    return {
+      'status': 'ok',
+      'checklist': newChecklist,
+      'title': body['task']?['title'],
+      'startDate': startDate.toIso8601String(),
+      'endDate': endDate.toIso8601String(),
+    };
+  }
+
+  // ---------- INTERNAL ----------
   static Future<Map<String, dynamic>> _callMakePlan(String input) async {
     final uri = Uri.parse('$baseUrl/makeplan');
     final resp = await http
         .post(
           uri,
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'input': input}), // options ใช้ค่า default = 1
+          body: jsonEncode({'input': input}),
         )
         .timeout(const Duration(seconds: 300));
 
@@ -80,7 +109,6 @@ class AiApiService {
     return data;
   }
 
-  /// ✅ รองรับ plan_output เป็น List<Map> และหยิบแผนแรก (ต้องเป็น Map<String,dynamic>)
   static Map<String, dynamic> _readPlanOutput(Map<String, dynamic> data) {
     final plansDyn = data['plan_output'];
     if (plansDyn is! List || plansDyn.isEmpty) {
@@ -91,6 +119,19 @@ class AiApiService {
       throw Exception('plan_output[0] ไม่ใช่ Object');
     }
     return Map<String, dynamic>.from(first as Map);
+  }
+
+  // ✅ helper ดึงรูป: คืนทั้ง images และ cover image
+  static Map<String, dynamic> _extractImages(Map<String, dynamic> source) {
+    final raw = source['image_url'];
+    final List<String> images = (raw is List)
+        ? raw.map((e) => e.toString()).where((u) => u.startsWith('http')).toList()
+        : <String>[];
+
+    return {
+      'images': images,
+      'image': images.isNotEmpty ? images.first : null,
+    };
   }
 
   static TaskModel _buildTaskFromPlanOutput(Map<String, dynamic> output) {
@@ -111,8 +152,6 @@ class AiApiService {
       for (final s in stops) {
         if (s is! Map) continue;
         final stop = Map<String, dynamic>.from(s);
-
-        // places = PlaceDetail (object เดียว)
         if (stop['places'] is! Map) continue;
         final place = Map<String, dynamic>.from(stop['places'] as Map);
 
@@ -128,7 +167,6 @@ class AiApiService {
             'แผนที่: ${place['google_maps_url']}',
         ].join('\n').trim();
 
-        // coordinates (รองรับ num/string)
         double? lat;
         double? lng;
         if (place['coordinates'] is Map) {
@@ -139,17 +177,14 @@ class AiApiService {
           lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
         }
 
-        // time / duration (start_time "HH:MM", stay_duration นาที)
         final String? startTime = (stop['start_time'] as String?)?.trim();
         final int? durationMin =
             stop['stay_duration'] is num ? (stop['stay_duration'] as num).toInt() : null;
-
         final Duration dur =
             (durationMin != null && durationMin > 0)
                 ? Duration(minutes: durationMin)
                 : const Duration(hours: 2);
 
-        // สร้างเวลาเริ่ม/จบต่อเนื่องด้วย cursor
         DateTime startAt;
         if (startTime != null && startTime.contains(':')) {
           final parts = startTime.split(':');
@@ -157,7 +192,7 @@ class AiApiService {
           final m = int.tryParse(parts[1]) ?? 0;
           startAt = DateTime(cursor.year, cursor.month, cursor.day, h, m);
           if (startAt.isBefore(cursor)) {
-            startAt = cursor; // กันเวลาซ้อน
+            startAt = cursor;
           }
         } else {
           startAt = cursor;
@@ -165,10 +200,12 @@ class AiApiService {
         final endAt = startAt.add(dur);
         cursor = endAt;
 
-        // priority simple map ตาม type → ใช้ตัวพิมพ์ใหญ่ให้ตรง UI ('High'/'Medium'/'Low')
         final pType = (place['type'] ?? '').toString().toLowerCase();
         final String priority =
             pType == 'attraction' ? 'High' : (pType == 'restaurant' ? 'Medium' : 'Low');
+
+        // ✅ ดึงรูปจาก place.image_url
+        final img = _extractImages(place);
 
         checklist.add({
           'type': 'plan',
@@ -181,8 +218,12 @@ class AiApiService {
           'end_date': endAt.toIso8601String(),
           'lat': lat,
           'lng': lng,
-          'time': startTime, // "HH:MM"
-          'duration': _formatDurationText(durationMin), // "90m"/"2h30m"
+          'time': startTime,
+          'duration': _formatDurationText(durationMin),
+
+          // ✅ เพิ่มรูป
+          'image': img['image'],
+          'images': img['images'],
         });
       }
     }
@@ -195,10 +236,9 @@ class AiApiService {
     final titleWithOverview =
         overview.isNotEmpty ? '$mainTitle — $overview' : mainTitle;
 
-    // ✅ สร้าง TaskModel ให้ครบฟิลด์ที่เป็น required ของโมเดลเวอร์ชันสิทธิ์
     return TaskModel(
       id: '',
-      uid: '',                      // จะถูกเติมระหว่าง createTask ใน controller
+      uid: '',
       title: titleWithOverview,
       priority: 'Medium',
       startDate: startMain,
@@ -206,9 +246,8 @@ class AiApiService {
       status: 'todo',
       editorUids: const [],
       viewerUids: const [],
-      memberUids: const [],         // จะถูกเติมเป็น [owner] ตอน createTask
+      memberUids: const [],
       checklist: checklist,
-      // createdAt/updatedAt ให้ controller ใส่ timestamp ตอนเขียน Firestore
     );
   }
 
@@ -238,30 +277,34 @@ class AiApiService {
           lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
         }
 
+        // ✅ ดึงรูปจาก place.image_url
+        final img = _extractImages(place);
+
         list.add({
           'title': title,
           'lat': lat,
           'lng': lng,
-          'type': (place['type'] ?? '').toString(),               // attraction/restaurant/other
+          'type': (place['type'] ?? '').toString(),
           'price': (place['price_info'] ?? '').toString(),
           'notes': (place['notes'] ?? '').toString(),
           'mapsUrl': (place['google_maps_url'] ?? '').toString(),
           'open': (place['opening_hours'] ?? '').toString(),
+
+          // ✅ เพิ่มรูป
+          'image': img['image'],
+          'images': img['images'],
         });
       }
     }
     return list;
   }
 
-  /// ✅ รองรับ hotel_output เป็น List<List<PlaceDetail>>
-  /// และดึงเฉพาะ "ชุดโรงแรมของแผนแรก" (index 0) มาแปลงเป็น markers
   static List<Map<String, dynamic>> _extractHotelPoints(Map<String, dynamic> data) {
     final result = <Map<String, dynamic>>[];
 
     final hotelOuterDyn = data['hotel_output'];
     if (hotelOuterDyn is! List || hotelOuterDyn.isEmpty) return result;
 
-    // hotelOuter[0] = ลิสต์โรงแรมของแผนแรก
     final firstPlanHotelsDyn = hotelOuterDyn.first;
     if (firstPlanHotelsDyn is! List) return result;
 
@@ -283,22 +326,29 @@ class AiApiService {
         lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
       }
 
+      // ✅ ดึงรูปจาก hotel.image_url
+      final img = _extractImages(m);
+
       result.add({
         'title': title,
         'lat': lat,
         'lng': lng,
         'type': 'hotel',
         'price': (m['price_info'] ?? '').toString(),
-        'notes': (m['notes'] ?? '').toString(),
+        // คุณใช้ notes ใน UI โรงแรม แต่ใน schema มี notes กับ short_description
+        'notes': (m['notes'] ?? m['short_description'] ?? '').toString(),
         'mapsUrl': (m['google_maps_url'] ?? '').toString(),
         'reserve': m['reservation_recommended'] == true,
+
+        // ✅ เพิ่มรูป
+        'image': img['image'],
+        'images': img['images'],
       });
     }
 
     return result;
   }
 
-  // ---- helpers ----
   static String _formatDurationText(int? minutes) {
     if (minutes == null || minutes <= 0) return '';
     final h = minutes ~/ 60;
@@ -308,19 +358,18 @@ class AiApiService {
     return '${m}m';
   }
 
-  /// เรียก /changeplan พร้อม normalize checklist ที่มีอยู่
+  // ===== changePlan เดิม (ปรับเล็กน้อย) =====
   static Future<List<Map<String, dynamic>>> changePlan({
     required String taskId,
-    required String instruction,                 // “เพิ่มคาเฟ่ใกล้ ICONSIAM อีก 1 ที่”
+    required String instruction,
     required List<Map<String, dynamic>> checklistNow,
     required DateTime startDate,
     required DateTime endDate,
-    String? locale,                              // th-TH หรือ en-US
-    String? city,                                // ถ้ามีเมือง/พื้นที่
+    String? locale,
+    String? city,
   }) async {
     final uri = Uri.parse('$baseUrl/changeplan');
 
-    // แปลงรายการให้สะอาด & เวลาเป็น UTC ISO
     final toApi = checklistNow.map(_normalizeForApi).toList();
 
     final body = {
@@ -328,7 +377,9 @@ class AiApiService {
       'instruction': instruction,
       'date_range': {
         'start': startDate.toUtc().toIso8601String(),
-        'end': endDate.toUtc().toIso8601String(),
+        'end': (endDate.isBefore(startDate) ? startDate : endDate)
+            .toUtc()
+            .toIso8601String(),
       },
       'checklist': toApi,
       if (locale != null) 'locale': locale,
@@ -352,7 +403,6 @@ class AiApiService {
       throw Exception('changeplan: รูปแบบ JSON ไม่ถูกต้อง');
     }
 
-    // สมมติ API ส่ง checklist ใหม่คืนมาที่ key 'checklist'
     final rawList = decoded['checklist'];
     if (rawList is! List) {
       throw Exception('changeplan: ฟิลด์ checklist ไม่ใช่ List');
@@ -360,7 +410,45 @@ class AiApiService {
 
     final result = rawList
         .whereType<Map>()
-        .map((e) => Map<String, dynamic>.from(e))
+        .map((e) {
+          final m = Map<String, dynamic>.from(e);
+          // normalize ตาม UI
+          m['type'] = (m['type'] ?? 'plan').toString();
+          m['done'] = (m['done'] == true) || (m['completed'] == true);
+          m['expanded'] = m['expanded'] ?? true;
+
+          final p = (m['priority'] ?? '').toString().toLowerCase();
+          if (p == 'high' || p == 'สูง') {
+            m['priority'] = 'High';
+          } else if (p == 'low' || p == 'ต่ำ') {
+            m['priority'] = 'Low';
+          } else {
+            m['priority'] = 'Medium';
+          }
+
+          double? toDouble(dynamic v) {
+            if (v == null) return null;
+            if (v is num) return v.toDouble();
+            return double.tryParse(v.toString());
+          }
+
+          m['lat'] = toDouble(m['lat']);
+          m['lng'] = toDouble(m['lng']);
+
+          // ✅ กันหลุด: ทำให้ image/images เป็นรูปแบบคงที่
+          if (m['images'] is List) {
+            m['images'] = (m['images'] as List).map((e) => e.toString()).toList();
+            m['image'] ??= (m['images'] as List).isNotEmpty ? (m['images'] as List).first : null;
+          } else {
+            m['images'] = const <String>[];
+          }
+
+          if (m['type'] == 'hotel' && m['selectedHotel'] == null) {
+            m['selectedHotel'] = false;
+          }
+
+          return m;
+        })
         .toList();
 
     return result;
@@ -383,13 +471,16 @@ class AiApiService {
       return null;
     }
 
-    // ปรับ priority ให้เป็นรูปแบบที่ API/แอปเข้าใจสอดคล้องกัน
     String _normPriority(dynamic p) {
       final s = (p ?? '').toString().toLowerCase();
       if (s == 'high' || s == 'สูง') return 'High';
       if (s == 'low' || s == 'ต่ำ') return 'Low';
       return 'Medium';
     }
+
+    // ✅ ส่ง images/image ไปด้วย (ถ้า backend จะใช้หรือคงไว้)
+    final images = (m['images'] is List) ? (m['images'] as List).map((e) => e.toString()).toList() : null;
+    final image = m['image']?.toString();
 
     return {
       'type': (m['type'] ?? 'plan').toString(),
@@ -406,6 +497,9 @@ class AiApiService {
       'price': m['price']?.toString(),
       'notes': m['notes']?.toString(),
       'mapsUrl': m['mapsUrl']?.toString(),
+
+      if (image != null && image.isNotEmpty) 'image': image,
+      if (images != null && images.isNotEmpty) 'images': images,
     };
   }
 }

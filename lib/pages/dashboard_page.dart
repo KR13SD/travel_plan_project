@@ -1,5 +1,8 @@
+import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
+import 'package:ai_task_project_manager/pages/ai_import_page.dart';
 import 'package:ai_task_project_manager/pages/task_detail_page.dart';
 import 'package:ai_task_project_manager/pages/task_view_page.dart';
+import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
@@ -20,6 +23,7 @@ class DashboardPage extends StatefulWidget {
 class _DashboardPageState extends State<DashboardPage>
     with TickerProviderStateMixin {
   final DashboardController controller = Get.find<DashboardController>();
+  final AiImportController aiCtrl = Get.find<AiImportController>();
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -47,16 +51,15 @@ class _DashboardPageState extends State<DashboardPage>
       vsync: this,
     );
 
-    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: Curves.easeOut),
-    );
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _fadeController, curve: Curves.easeOut));
 
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.25),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
-    );
+    _slideAnimation =
+        Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
+          CurvedAnimation(parent: _slideController, curve: Curves.easeOutBack),
+        );
 
     _fadeController.forward();
     _slideController.forward();
@@ -123,143 +126,164 @@ class _DashboardPageState extends State<DashboardPage>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Container(
-        // ✅ พื้นหลังธีมใหม่
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Color(0xFF06B6D4), // cyan-500
-              Color(0xFF0891B2), // cyan-600
-              Color(0xFF0891B2),
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildModernAppBar(
-                title: 'dashboard'.tr,
-                subtitle: _todayStr,
+      body: Stack(
+        children: [
+          Container(
+            // ✅ พื้นหลังธีมใหม่
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFF06B6D4), // cyan-500
+                  Color(0xFF0891B2), // cyan-600
+                  Color(0xFF0891B2),
+                ],
               ),
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.only(top: 20),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFF8FAFC),
-                    borderRadius: BorderRadius.only(
-                      topLeft: Radius.circular(30),
-                      topRight: Radius.circular(30),
-                    ),
+            ),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _buildModernAppBar(
+                    title: 'dashboard'.tr,
+                    subtitle: _todayStr,
                   ),
-                  child: Obx(() {
-                    if (controller.isLoading.value) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(20),
-                              decoration: BoxDecoration(
-                                // ✅ กล่องโหลดใช้กราเดียนต์ธีมใหม่
-                                gradient: const LinearGradient(
-                                  colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
+                  Expanded(
+                    child: Container(
+                      margin: const EdgeInsets.only(top: 20),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFF8FAFC),
+                        borderRadius: BorderRadius.only(
+                          topLeft: Radius.circular(30),
+                          topRight: Radius.circular(30),
+                        ),
+                      ),
+                      child: Obx(() {
+                        if (controller.isGenerating.value) {
+                          return Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(20),
+                                  decoration: BoxDecoration(
+                                    // ✅ กล่องโหลดใช้กราเดียนต์ธีมใหม่
+                                    gradient: const LinearGradient(
+                                      colors: [
+                                        Color(0xFF06B6D4),
+                                        Color(0xFF0891B2),
+                                      ],
+                                    ),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const CircularProgressIndicator(
+                                    color: Colors.white,
+                                    strokeWidth: 3,
+                                  ),
                                 ),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: const CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 3,
-                              ),
+                                const SizedBox(height: 24),
+                                Text(
+                                  'loading'.tr,
+                                  style: const TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 24),
-                            Text(
-                              'loading'.tr,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w500,
-                                color: Colors.grey,
+                          );
+                        }
+
+                        return CustomScrollView(
+                          slivers: [
+                            SliverToBoxAdapter(
+                              child: SlideTransition(
+                                position: _slideAnimation,
+                                child: FadeTransition(
+                                  opacity: _fadeAnimation,
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(20),
+                                    child: Column(
+                                      children: [
+                                        _buildStatsCards(),
+                                        const SizedBox(height: 32),
+                                        _buildTaskListSection(
+                                          context: context,
+                                          title: "todaytasks".tr,
+                                          tasks: controller.tasksToday,
+                                          emptyMessage: "notasksfortoday".tr,
+                                          icon: Icons.today,
+                                          gradientColors: [
+                                            Colors.blue.shade400,
+                                            Colors.blue.shade600,
+                                          ],
+                                        ),
+                                        const SizedBox(height: 28),
+                                        _buildTaskListSection(
+                                          context: context,
+                                          title: "taskincoming(3days)".tr,
+                                          tasks: controller.tasksUpcoming,
+                                          emptyMessage: "noupcomingtasks".tr,
+                                          icon: Icons.upcoming,
+                                          gradientColors: [
+                                            Colors.purple.shade400,
+                                            Colors.purple.shade600,
+                                          ],
+                                        ),
+                                        const SizedBox(height: 28),
+                                        _buildTaskListSection(
+                                          context: context,
+                                          title: "taskoverdue".tr,
+                                          tasks: controller.tasksOverdue,
+                                          emptyMessage: "nooverduetasks".tr,
+                                          icon: Icons.schedule,
+                                          gradientColors: [
+                                            Colors.red.shade400,
+                                            Colors.red.shade600,
+                                          ],
+                                        ),
+                                        const SizedBox(height: 100),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               ),
                             ),
                           ],
-                        ),
-                      );
-                    }
-
-                    return CustomScrollView(
-                      slivers: [
-                        SliverToBoxAdapter(
-                          child: SlideTransition(
-                            position: _slideAnimation,
-                            child: FadeTransition(
-                              opacity: _fadeAnimation,
-                              child: Padding(
-                                padding: const EdgeInsets.all(20),
-                                child: Column(
-                                  children: [
-                                    _buildStatsCards(),
-                                    const SizedBox(height: 32),
-                                    _buildTaskListSection(
-                                      context: context,
-                                      title: "todaytasks".tr,
-                                      tasks: controller.tasksToday,
-                                      emptyMessage: "notasksfortoday".tr,
-                                      icon: Icons.today,
-                                      gradientColors: [
-                                        Colors.blue.shade400,
-                                        Colors.blue.shade600,
-                                      ],
-                                    ),
-                                    const SizedBox(height: 28),
-                                    _buildTaskListSection(
-                                      context: context,
-                                      title: "taskincoming(3days)".tr,
-                                      tasks: controller.tasksUpcoming,
-                                      emptyMessage: "noupcomingtasks".tr,
-                                      icon: Icons.upcoming,
-                                      gradientColors: [
-                                        Colors.purple.shade400,
-                                        Colors.purple.shade600,
-                                      ],
-                                    ),
-                                    const SizedBox(height: 28),
-                                    _buildTaskListSection(
-                                      context: context,
-                                      title: "taskoverdue".tr,
-                                      tasks: controller.tasksOverdue,
-                                      emptyMessage: "nooverduetasks".tr,
-                                      icon: Icons.schedule,
-                                      gradientColors: [
-                                        Colors.red.shade400,
-                                        Colors.red.shade600,
-                                      ],
-                                    ),
-                                    const SizedBox(height: 100),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                ),
+                        );
+                      }),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
-        ),
+          const Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AiGeneratingOverlay(),
+          ),
+        ],
       ),
-      floatingActionButton: _buildFloatingActionButton(),
+      floatingActionButton: Obx(() {
+        final aiCtrl = Get.find<AiImportController>();
+
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: aiCtrl.isGenerating.value || aiCtrl.hasResultReady.value
+                ? 80 // ⬆️ ดัน FAB ขึ้น เมื่อมี AI process
+                : 0, // ⬇️ ปกติ
+          ),
+          child: _buildFloatingActionButton(),
+        );
+      }),
     );
   }
 
   /// Modern AppBar สไตล์เดียวกับ TaskListPage (มีแอนิเมชัน)
-  Widget _buildModernAppBar({
-    required String title,
-    String? subtitle,
-  }) {
+  Widget _buildModernAppBar({required String title, String? subtitle}) {
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Container(
@@ -608,6 +632,88 @@ class _DashboardPageState extends State<DashboardPage>
         ),
       ),
     );
+  }
+
+  // ในหน้า Dashboard หรือ Home
+  Widget _buildAiStatusOverlay() {
+    // ดึง Controller มา (ใช้ find เพราะถูกสร้างไปแล้วในหน้า AI Import)
+    // ถ้ากลัว Error กรณีเครื่องยังไม่เคยเข้าหน้า AI Import ให้ใช้ Get.put แทน
+    final AiImportController aiCtrl = Get.find<AiImportController>();
+
+    return Obx(() {
+      // ถ้าไม่ได้กำลังโหลด และ ไม่มีข้อมูลค้างอยู่ ไม่ต้องแสดงอะไร
+      if (!aiCtrl.isGenerating.value && aiCtrl.previewTasks.isEmpty) {
+        return const SizedBox.shrink();
+      }
+
+      return GestureDetector(
+        onTap: () => Get.to(() => const AiImportPage()), // กดแล้วกลับไปหน้า AI
+        child: Container(
+          width: double.infinity,
+          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: aiCtrl.isGenerating.value
+                ? Colors.blue.shade50
+                : Colors.green.shade50,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: aiCtrl.isGenerating.value
+                  ? Colors.blue.shade200
+                  : Colors.green.shade200,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              // ไอคอนเปลี่ยนตามสถานะ
+              aiCtrl.isGenerating.value
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.check_circle, color: Colors.green),
+              const SizedBox(width: 12),
+
+              // ข้อความบอกสถานะ
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      aiCtrl.isGenerating.value
+                          ? "AI กำลังสร้างแผนงาน..."
+                          : "AI สร้างแผนงานเสร็จแล้ว!",
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: aiCtrl.isGenerating.value
+                            ? Colors.blue.shade900
+                            : Colors.green.shade900,
+                      ),
+                    ),
+                    Text(
+                      aiCtrl.isGenerating.value
+                          ? "คุณสามารถทำงานอื่นรอได้"
+                          : "แตะเพื่อดูและบันทึกลงโปรเจกต์",
+                      style: TextStyle(fontSize: 12, color: Colors.black54),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
+            ],
+          ),
+        ),
+      );
+    });
   }
 
   Widget _buildAdvancedPriorityChip(

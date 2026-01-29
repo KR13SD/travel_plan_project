@@ -1,13 +1,17 @@
+// lib/pages/task_view_page.dart
+import 'dart:io';
+
 import 'package:ai_task_project_manager/pages/task_detail_page.dart';
+import 'package:ai_task_project_manager/pages/map_preview.dart';
 import 'package:ai_task_project_manager/widget/invite_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
 import '../controllers/dashboard_controller.dart';
 import '../models/task_model.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class TaskViewPage extends StatefulWidget {
   final TaskModel task;
@@ -25,30 +29,37 @@ class _TaskViewPageState extends State<TaskViewPage>
   final DashboardController controller = Get.find<DashboardController>();
   final dateFormat = DateFormat('dd MMM yyyy');
 
-  // current task (จะอัปเดตหลังกลับจากหน้าแก้ไข)
   late TaskModel currentTask;
 
   // timezone-safe helper
   DateTime _asLocal(DateTime d) => d.isUtc ? d.toLocal() : d;
 
-  // Priority options ให้ตรงกับระบบ
-  final Map<String, Map<String, dynamic>> priorityOptions = {
-    'Low': {
-      'label': 'low'.tr,
-      'color': Colors.green,
-      'icon': Icons.low_priority,
-    },
-    'Medium': {
-      'label': 'medium'.tr,
-      'color': Colors.orange,
-      'icon': Icons.remove,
-    },
-    'High': {
-      'label': 'high'.tr,
-      'color': Colors.red,
-      'icon': Icons.priority_high,
-    },
-  };
+  // ===== Helpers แก้พิกัด (ดึง Logic จาก AiImportPage) =====
+  double? _parseCoordinate(dynamic value) {
+    if (value == null) return null;
+    if (value is num) return value.toDouble();
+    if (value is String) return double.tryParse(value);
+    return null;
+  }
+
+  Future<void> _openGoogleMap(double lat, double lng, {String? label}) async {
+    final q = Uri.encodeComponent(label ?? 'Location');
+    final googleUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng($q)');
+    
+    if (await canLaunchUrl(googleUrl)) {
+      await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
+      return;
+    }
+    
+    final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($q)');
+    if (await canLaunchUrl(geoUri)) {
+      await launchUrl(geoUri, mode: LaunchMode.externalApplication);
+      return;
+    }
+    
+    final appleUrl = Uri.parse('http://maps.apple.com/?ll=$lat,$lng&q=$q');
+    await launchUrl(appleUrl, mode: LaunchMode.externalApplication);
+  }
 
   final Map<String, Map<String, dynamic>> statusOptions = {
     'todo': {
@@ -82,11 +93,11 @@ class _TaskViewPageState extends State<TaskViewPage>
     );
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
-          CurvedAnimation(
-            parent: _animationController,
-            curve: Curves.easeOutBack,
-          ),
-        );
+      CurvedAnimation(
+        parent: _animationController,
+        curve: Curves.easeOutBack,
+      ),
+    );
     _animationController.forward();
   }
 
@@ -105,47 +116,19 @@ class _TaskViewPageState extends State<TaskViewPage>
     super.dispose();
   }
 
-  String _normalizePriority(String? priority) {
-    if (priority == null) return 'Medium';
-    if (priorityOptions.containsKey(priority)) return priority;
-    switch (priority.toLowerCase()) {
-      case 'high':
-      case 'สูง':
-        return 'High';
-      case 'low':
-      case 'ต่ำ':
-        return 'Low';
-      case 'medium':
-      case 'กลาง':
-      default:
-        return 'Medium';
+  Future<void> _navigateToEditPage({required bool canEdit}) async {
+    if (!canEdit) {
+      Get.snackbar(
+        'Permission',
+        'คุณไม่มีสิทธิ์แก้ไขงานนี้',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
     }
-  }
-
-  Future<void> _navigateToEditPage() async {
     final result = await Get.to(TaskDetailPage(task: currentTask));
     if (result == true) {
       _refreshTaskData();
     }
-  }
-
-  // ===== helpers for map & format =====
-  Future<void> _openExternalMap(double lat, double lng, {String? label}) async {
-    final q = Uri.encodeComponent(label ?? 'Location');
-    final googleUrl = Uri.parse(
-      'https://www.google.com/maps/search/?api=1&query=$lat,$lng($q)',
-    );
-    if (await canLaunchUrl(googleUrl)) {
-      await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
-      return;
-    }
-    final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($q)');
-    if (await canLaunchUrl(geoUri)) {
-      await launchUrl(geoUri, mode: LaunchMode.externalApplication);
-      return;
-    }
-    final appleUrl = Uri.parse('http://maps.apple.com/?ll=$lat,$lng&q=$q');
-    await launchUrl(appleUrl, mode: LaunchMode.externalApplication);
   }
 
   String _formatTime(dynamic time) {
@@ -183,29 +166,38 @@ class _TaskViewPageState extends State<TaskViewPage>
     return dateFormat.format(_asLocal(d ?? DateTime.now()));
   }
 
-  Color _priorityColor(String? p) {
-    switch ((p ?? 'medium').toLowerCase()) {
-      case 'high':
-        return const Color(0xFFEF4444);
-      case 'low':
-        return const Color(0xFF10B981);
-      default:
-        return const Color(0xFFF59E0B);
+  String _stripMapLinks(String text) {
+    if (text.trim().isEmpty) return text;
+    final lines = text.split(RegExp(r'\r?\n'));
+    final regexUrl = RegExp(
+      r'(https?:\/\/)?(www\.)?(google\.[^\/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps|shorturl\.at|bit\.ly|tinyurl\.com)\/',
+      caseSensitive: false,
+    );
+
+    final kept = <String>[];
+    for (final raw in lines) {
+      final s = raw.trim();
+      if (s.isEmpty) continue;
+      final lower = s.toLowerCase();
+      if (lower.startsWith('แผนที่:') || lower.startsWith('map:')) continue;
+      if (regexUrl.hasMatch(s)) continue;
+      kept.add(raw);
     }
+    return kept.join('\n');
   }
 
   @override
   Widget build(BuildContext context) {
-    final priority = _normalizePriority(currentTask.priority);
     final statusInfo =
         statusOptions[currentTask.status] ?? statusOptions['todo']!;
-    final priorityInfo =
-        priorityOptions[priority] ?? priorityOptions['Medium']!;
 
-    final user = FirebaseAuth.instance.currentUser;
-    final bool isOwner = (user?.uid ?? '') == (currentTask.uid ?? '');
+    final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final bool isOwner = currentTask.uid == uid;
+    final bool isEditor = currentTask.editorUids.contains(uid);
+    final bool isViewer = currentTask.viewerUids.contains(uid);
+    final bool canEdit = isOwner || isEditor;
+    final bool canInvite = isOwner;
 
-    // แยก checklist: hotels vs plans
     final List<Map<String, dynamic>> raw = List<Map<String, dynamic>>.from(
       currentTask.checklist,
     );
@@ -215,10 +207,6 @@ class _TaskViewPageState extends State<TaskViewPage>
     final plans = raw
         .where((m) => (m['type']?.toString() ?? '') != 'hotel')
         .toList();
-
-    final completedCount = plans
-        .where((item) => item['done'] == true || item['completed'] == true)
-        .length;
 
     final isOverdue =
         currentTask.status != 'done' &&
@@ -239,9 +227,14 @@ class _TaskViewPageState extends State<TaskViewPage>
               borderRadius: BorderRadius.vertical(bottom: Radius.circular(28)),
             ),
             titleSpacing: 0,
-            title: _buildStatusHeaderBar(statusInfo),
+            title: _buildStatusHeaderBar(
+              statusInfo,
+              roleBadge: isOwner
+                  ? 'Owner'
+                  : (isEditor ? 'Editor' : (isViewer ? 'Viewer' : '')),
+            ),
             actions: [
-              if (isOwner)
+              if (canInvite)
                 IconButton(
                   tooltip: 'เชิญเข้าร่วม',
                   icon: const Icon(Icons.person_add_alt_1_rounded),
@@ -254,19 +247,17 @@ class _TaskViewPageState extends State<TaskViewPage>
                           top: Radius.circular(16),
                         ),
                       ),
-                      builder: (_) => InviteSheet(
-                        taskId: currentTask.id,
-                        // สามารถเพิ่ม isOwner: true ถ้าปรับ InviteSheet รองรับ
-                      ),
+                      builder: (_) => InviteSheet(taskId: currentTask.id),
                     );
                   },
                 ),
-              IconButton(
-                onPressed: _navigateToEditPage,
-                icon: const Icon(Icons.edit_rounded),
-                tooltip: 'edit'.tr,
-                color: Colors.white,
-              ),
+              if (canEdit)
+                IconButton(
+                  onPressed: () => _navigateToEditPage(canEdit: canEdit),
+                  icon: const Icon(Icons.edit_rounded),
+                  tooltip: 'edit'.tr,
+                  color: Colors.white,
+                ),
             ],
           ),
 
@@ -280,48 +271,12 @@ class _TaskViewPageState extends State<TaskViewPage>
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title / Overdue
                       _buildTaskTitleCard(currentTask, statusInfo, isOverdue),
-
-                      const SizedBox(height: 20),
-
-                      // Status & Priority
-                      Row(
-                        children: [
-                          Expanded(
-                            child: _buildInfoCard(
-                              title: 'status'.tr,
-                              icon: statusInfo['icon'],
-                              color: statusInfo['color'],
-                              content: statusInfo['label'],
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: _buildInfoCard(
-                              title: 'priority'.tr,
-                              icon: priorityInfo['icon'],
-                              color: priorityInfo['color'],
-                              content: priorityInfo['label'],
-                            ),
-                          ),
-                        ],
-                      ),
-
                       const SizedBox(height: 16),
-
-                      // Date range
                       _buildDateInfoCard(currentTask, isOverdue),
-
-                      // Progress (เฉพาะ plans)
-                      if (plans.isNotEmpty) ...[
-                        const SizedBox(height: 20),
-                        _buildProgressCard(plans, completedCount),
-                      ],
-
                       const SizedBox(height: 20),
 
-                      // ====== Plans Section ======
+                      // ===== Plans Section =====
                       _buildSectionHeader(
                         icon: Icons.route_rounded,
                         color: Colors.blue,
@@ -338,7 +293,7 @@ class _TaskViewPageState extends State<TaskViewPage>
 
                       const SizedBox(height: 20),
 
-                      // ====== Hotels Section ======
+                      // ===== Hotels Section =====
                       _buildSectionHeader(
                         icon: Icons.hotel_rounded,
                         color: Colors.purple,
@@ -362,20 +317,22 @@ class _TaskViewPageState extends State<TaskViewPage>
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToEditPage,
-        backgroundColor: statusInfo['color'],
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.edit_rounded),
-        label: Text(
-          'edit'.tr,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-      ),
+      floatingActionButton: canEdit
+          ? FloatingActionButton.extended(
+              onPressed: () => _navigateToEditPage(canEdit: canEdit),
+              backgroundColor: statusInfo['color'],
+              foregroundColor: Colors.white,
+              icon: const Icon(Icons.edit_rounded),
+              label: Text(
+                'edit'.tr,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            )
+          : null,
     );
   }
 
-  // ===== UI Building Blocks =====
+  // ===== UI blocks =====
   Widget _buildTaskTitleCard(
     TaskModel task,
     Map<String, dynamic> statusInfo,
@@ -466,61 +423,9 @@ class _TaskViewPageState extends State<TaskViewPage>
     );
   }
 
-  Widget _buildInfoCard({
-    required String title,
-    required IconData icon,
-    required Color color,
-    required String content,
-  }) {
-    return Card(
-      elevation: 3,
-      shadowColor: Colors.black.withOpacity(0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, size: 16, color: color),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              content,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: Colors.black87,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildDateInfoCard(TaskModel task, bool isOverdue) {
     final start = _asLocal(task.startDate);
     final end = _asLocal(task.endDate);
-    final duration = end.difference(start).inDays;
 
     return Card(
       elevation: 3,
@@ -528,79 +433,26 @@ class _TaskViewPageState extends State<TaskViewPage>
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.calendar_today,
-                    size: 20,
-                    color: Colors.blue,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'date'.tr,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildDateDisplay(
-                    'startdate'.tr,
-                    start,
-                    Icons.play_arrow,
-                    Colors.green,
-                  ),
-                ),
-                Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Icon(Icons.arrow_forward, color: Colors.grey[400]),
-                ),
-                Expanded(
-                  child: _buildDateDisplay(
-                    'duedate'.tr,
-                    end,
-                    Icons.flag,
-                    isOverdue ? Colors.red : Colors.blue,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(8),
+            Expanded(
+              child: _buildDateDisplay(
+                'startdate'.tr,
+                start,
+                Icons.play_arrow,
+                Colors.green,
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.schedule, size: 16, color: Colors.grey[600]),
-                  const SizedBox(width: 8),
-                  Text(
-                    'duration'.trParams({'days': duration.toString()}),
-                    style: TextStyle(
-                      color: Colors.grey[700],
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+            ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 12),
+              child: Icon(Icons.arrow_forward, color: Colors.grey[400]),
+            ),
+            Expanded(
+              child: _buildDateDisplay(
+                'duedate'.tr,
+                end,
+                Icons.flag,
+                isOverdue ? Colors.red : Colors.blue,
               ),
             ),
           ],
@@ -642,79 +494,6 @@ class _TaskViewPageState extends State<TaskViewPage>
           ),
         ),
       ],
-    );
-  }
-
-  Widget _buildProgressCard(List<dynamic> plans, int completedCount) {
-    final progress = plans.isEmpty ? 0.0 : completedCount / plans.length;
-
-    return Card(
-      elevation: 3,
-      shadowColor: Colors.black.withOpacity(0.1),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.purple.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Icon(
-                    Icons.trending_up,
-                    size: 20,
-                    color: Colors.purple,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'progress'.tr,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  '${(progress * 100).round()}%',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: progress == 1.0 ? Colors.green : Colors.orange,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: progress,
-              backgroundColor: Colors.grey[200],
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progress == 1.0 ? Colors.green : Colors.orange,
-              ),
-              minHeight: 8,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'subtask_progress'.trParams({
-                'completed': completedCount.toString(),
-                'total': plans.length.toString(),
-              }),
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
     );
   }
 
@@ -787,19 +566,20 @@ class _TaskViewPageState extends State<TaskViewPage>
 
   // ===== Item views =====
   Widget _buildPlanItemView(Map<String, dynamic> item, int index) {
-    final done = item['done'] ?? item['completed'] ?? false;
+    final done = item['done'] == true || item['completed'] == true;
     final title = (item['title'] ?? '').toString();
-    final description = (item['description'] ?? '').toString();
-    final priority = (item['priority'] ?? 'medium').toString();
+    final description = _stripMapLinks((item['description'] ?? '').toString());
     final startDate = item['start_date'];
     final time = _formatTime(item['time']);
     final duration = (item['duration'] ?? '').toString();
-    final double? lat = (item['lat'] is num)
-        ? (item['lat'] as num).toDouble()
-        : null;
-    final double? lng = (item['lng'] is num)
-        ? (item['lng'] as num).toDouble()
-        : null;
+    final List<String> images = [
+      if (item['image'] != null && item['image'].toString().startsWith('http')) item['image'].toString(),
+      ...(item['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
+    ];
+
+    // ✅ ใช้ Logic แก้พิกัดจาก AiImportPage
+    final double? lat = _parseCoordinate(item['lat']);
+    final double? lng = _parseCoordinate(item['lng']);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -814,119 +594,91 @@ class _TaskViewPageState extends State<TaskViewPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // row 1: index + priority + done marker
           Row(
             children: [
               Container(
-                width: 26,
-                height: 26,
+                width: 26, height: 26,
                 decoration: BoxDecoration(
                   color: Colors.blue.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: _priorityColor(priority).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Text(
-                  priority.toString().toUpperCase(),
-                  style: TextStyle(
-                    color: _priorityColor(priority),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 11,
-                  ),
+                  child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF111827))),
                 ),
               ),
               const Spacer(),
-              Container(
-                width: 22,
-                height: 22,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: done ? Colors.green : Colors.transparent,
-                  border: Border.all(
-                    color: done ? Colors.green : Colors.grey[400]!,
-                    width: 2,
-                  ),
-                ),
-                child: done
-                    ? const Icon(Icons.check, size: 14, color: Colors.white)
-                    : null,
-              ),
+              if (done)
+                _buildDoneBadge(),
             ],
           ),
 
+          if (images.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildImageGallery(images),
+          ],
+
           const SizedBox(height: 10),
 
-          // title
           Text(
             title.isEmpty ? 'untitledsubtask'.tr : title,
             style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
+              fontSize: 16, fontWeight: FontWeight.w800,
               color: done ? Colors.grey[600] : const Color(0xFF111827),
               decoration: done ? TextDecoration.lineThrough : null,
             ),
           ),
-
           if (description.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(
-              description,
-              style: TextStyle(
-                color: done ? Colors.grey[500] : const Color(0xFF374151),
-                height: 1.5,
-              ),
-            ),
+            Text(description, style: TextStyle(color: done ? Colors.grey[500] : const Color(0xFF374151), height: 1.5)),
           ],
 
           const SizedBox(height: 10),
           const Divider(height: 1, color: Color(0xFFE5E7EB)),
           const SizedBox(height: 10),
 
-          // info chips
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 8, runSpacing: 8,
             children: [
               if (startDate != null)
-                _infoChip(
-                  icon: Icons.calendar_today_rounded,
-                  label: _formatDateFlexible(startDate),
-                  color: const Color(0xFF3B82F6),
-                ),
+                _infoChip(icon: Icons.calendar_today_rounded, label: _formatDateFlexible(startDate), color: const Color(0xFF3B82F6)),
               if (time.isNotEmpty || duration.isNotEmpty)
-                _infoChip(
-                  icon: Icons.schedule_rounded,
-                  label: time.isNotEmpty && duration.isNotEmpty
-                      ? '$time ($duration)'
-                      : time.isNotEmpty
-                          ? time
-                          : duration,
-                  color: const Color(0xFFF59E0B),
-                ),
-              if (lat != null && lng != null)
-                _infoChip(
-                  icon: Icons.place_rounded,
-                  label: 'Location',
-                  color: const Color(0xFFEF4444),
-                  onTap: () => _openExternalMap(lat, lng, label: title),
-                ),
+                _infoChip(icon: Icons.schedule_rounded, 
+                  label: time.isNotEmpty && duration.isNotEmpty ? '$time ($duration)' : (time.isNotEmpty ? time : duration), 
+                  color: const Color(0xFFF59E0B)),
             ],
           ),
+
+          // ✅ ฝังแผนที่ Interactive แบบ AiImportPage
+          if (lat != null && lng != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: GestureDetector(
+                onTap: () => _openGoogleMap(lat, lng, label: title),
+                child: Stack(
+                  children: [
+                    MapPreview(
+                      key: ValueKey('plan_map_${currentTask.id}_${index}_$lat'),
+                      lat: lat,
+                      lng: lng,
+                    ),
+                    Positioned(
+                      right: 8, bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(6)),
+                        child: const Row(children: [
+                          Icon(Icons.map_rounded, color: Colors.white, size: 14),
+                          SizedBox(width: 4),
+                          Text('Open Map', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                        ]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -934,12 +686,17 @@ class _TaskViewPageState extends State<TaskViewPage>
 
   Widget _buildHotelItemView(Map<String, dynamic> h, int index) {
     final title = (h['title'] ?? '').toString();
-    final notes = (h['notes'] ?? '').toString();
+    final notes = _stripMapLinks((h['notes'] ?? '').toString());
     final price = (h['price'] ?? '').toString();
     final reserve = h['reserve'] == true;
-    final mapsUrl = (h['mapsUrl'] ?? '').toString();
-    final double? lat = (h['lat'] is num) ? (h['lat'] as num).toDouble() : null;
-    final double? lng = (h['lng'] is num) ? (h['lng'] as num).toDouble() : null;
+    final List<String> images = [
+      if (h['image'] != null && h['image'].toString().startsWith('http')) h['image'].toString(),
+      ...(h['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
+    ];
+
+    // ✅ ใช้ Logic แก้พิกัดจาก AiImportPage
+    final double? lat = _parseCoordinate(h['lat']);
+    final double? lng = _parseCoordinate(h['lng']);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -952,153 +709,49 @@ class _TaskViewPageState extends State<TaskViewPage>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // header row
           Row(
             children: [
               Container(
-                width: 26,
-                height: 26,
-                decoration: BoxDecoration(
-                  color: Colors.purple.withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Center(
-                  child: Text(
-                    '${index + 1}',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                ),
+                width: 26, height: 26,
+                decoration: BoxDecoration(color: Colors.purple.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+                child: Center(child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF111827)))),
               ),
               const SizedBox(width: 8),
               const Icon(Icons.bed_rounded, color: Colors.purple, size: 18),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  title.isEmpty ? 'Hotel' : title,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF111827),
-                  ),
-                ),
-              ),
-              if (reserve)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFEF3C7),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFF59E0B)),
-                  ),
-                  child: Row(
-                    children: const [
-                      Icon(
-                        Icons.event_available_rounded,
-                        size: 14,
-                        color: Color(0xFFF59E0B),
-                      ),
-                      SizedBox(width: 4),
-                      Text(
-                        'ควรจองล่วงหน้า',
-                        style: TextStyle(
-                          color: Color(0xFFB45309),
-                          fontWeight: FontWeight.w700,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              Expanded(child: Text(title.isEmpty ? 'Hotel' : title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
+              if (reserve) _buildReserveBadge(),
             ],
           ),
+
+          if (images.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            _buildImageGallery(images),
+          ],
 
           const SizedBox(height: 8),
 
           if (price.isNotEmpty)
-            Row(
-              children: [
-                const Icon(
-                  Icons.attach_money_rounded,
-                  size: 16,
-                  color: Color(0xFF059669),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    price,
-                    style: const TextStyle(
-                      color: Color(0xFF065F46),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          if (price.isNotEmpty) const SizedBox(height: 6),
+            _infoChip(icon: Icons.attach_money_rounded, label: price, color: const Color(0xFF059669)),
 
-          if (notes.isNotEmpty)
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(
-                  Icons.info_outline_rounded,
-                  size: 16,
-                  color: Color(0xFF4B5563),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    notes,
-                    style: const TextStyle(
-                      color: Color(0xFF374151),
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(notes, style: const TextStyle(color: Color(0xFF374151), height: 1.5)),
+          ],
 
-          if ((lat != null && lng != null) || mapsUrl.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                if (lat != null && lng != null)
-                  ElevatedButton.icon(
-                    onPressed: () => _openExternalMap(lat, lng, label: title),
-                    icon: const Icon(Icons.map_rounded),
-                    label: Text('Open in Maps'.tr),
-                  ),
-                if (mapsUrl.isNotEmpty)
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      final uri = Uri.parse(mapsUrl);
-                      if (await canLaunchUrl(uri)) {
-                        await launchUrl(
-                          uri,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      } else {
-                        Get.showSnackbar(
-                          GetSnackBar(
-                            message: 'ไม่สามารถเปิดลิงก์แผนที่ได้',
-                            duration: const Duration(seconds: 3),
-                            backgroundColor: Colors.red.shade600,
-                          ),
-                        );
-                      }
-                    },
-                    icon: const Icon(Icons.link_rounded),
-                    label: const Text('Google Maps'),
-                  ),
-              ],
+          // ✅ ฝังแผนที่ Interactive สำหรับโรงแรม
+          if (lat != null && lng != null) ...[
+            const SizedBox(height: 12),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: GestureDetector(
+                onTap: () => _openGoogleMap(lat, lng, label: title),
+                child: MapPreview(
+                  key: ValueKey('hotel_map_${currentTask.id}_${index}_$lat'),
+                  lat: lat,
+                  lng: lng,
+                ),
+              ),
             ),
           ],
         ],
@@ -1106,12 +759,32 @@ class _TaskViewPageState extends State<TaskViewPage>
     );
   }
 
-  Widget _infoChip({
-    required IconData icon,
-    required String label,
-    required Color color,
-    VoidCallback? onTap,
-  }) {
+  // ===== Tiny UI Badges =====
+  Widget _buildDoneBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(color: Colors.green.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
+      child: const Row(children: [
+        Icon(Icons.check_circle, size: 14, color: Colors.green),
+        SizedBox(width: 6),
+        Text('Done', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 11)),
+      ]),
+    );
+  }
+
+  Widget _buildReserveBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF59E0B))),
+      child: const Row(children: [
+        Icon(Icons.event_available_rounded, size: 14, color: Color(0xFFF59E0B)),
+        SizedBox(width: 4),
+        Text('ควรจองล่วงหน้า', style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w700, fontSize: 11)),
+      ]),
+    );
+  }
+
+  Widget _infoChip({required IconData icon, required String label, required Color color, VoidCallback? onTap}) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -1127,32 +800,21 @@ class _TaskViewPageState extends State<TaskViewPage>
           children: [
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+            Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusHeaderBar(Map<String, dynamic> statusInfo) {
+  Widget _buildStatusHeaderBar(Map<String, dynamic> statusInfo, {String roleBadge = ''}) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, right: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           IconButton(
             onPressed: () => Get.back(),
-            icon: const Icon(
-              Icons.arrow_back_ios_new_rounded,
-              color: Colors.white,
-            ),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           ),
           Container(
             padding: const EdgeInsets.all(12),
@@ -1161,11 +823,7 @@ class _TaskViewPageState extends State<TaskViewPage>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.3)),
             ),
-            child: const Icon(
-              Icons.visibility_rounded,
-              color: Colors.white,
-              size: 28,
-            ),
+            child: const Icon(Icons.visibility_rounded, color: Colors.white, size: 28),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -1173,30 +831,57 @@ class _TaskViewPageState extends State<TaskViewPage>
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'taskview'.tr,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 24,
-                  ),
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Text('แผนเที่ยว', maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
+                    ),
+                    if (roleBadge.isNotEmpty)
+                      Container(
+                        margin: const EdgeInsets.only(left: 8),
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                        ),
+                        child: Text(roleBadge, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                      ),
+                  ],
                 ),
-                Text(
-                  '${'status'.tr}: ${statusOptions[currentTask.status]?['label'] ?? '—'}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                Text('${'status'.tr}: ${statusOptions[currentTask.status]?['label'] ?? '—'}',
+                  style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500)),
               ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildImageGallery(List<String> images) {
+    if (images.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 160,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: images.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 10),
+        itemBuilder: (context, index) {
+          return ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: AspectRatio(
+              aspectRatio: 4 / 3,
+              child: Image.network(
+                images[index],
+                fit: BoxFit.cover,
+                loadingBuilder: (c, w, p) => p == null ? w : Container(color: Colors.grey[200], child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
+                errorBuilder: (_, __, ___) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey)),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

@@ -37,6 +37,9 @@ logger = logging.getLogger("Travel Planner")
 GEMINI_MODEL_HIGH = os.getenv("GEMINI_MODEL_HIGH", "gemini-2.5-flash")
 GEMINI_MODEL_LOW = os.getenv("GEMINI_MODEL_LOW", "gemini-2.5-flash-lite")
 
+GOOGLE_CLOUD_API_KEY = os.getenv("GOOGLE_CLOUD_API_KEY", None)
+CX_ID = os.getenv("CX_ID", None)
+
 # -----------------------------------------------------------------------------
 # Schemas (Pydantic)
 # -----------------------------------------------------------------------------
@@ -271,7 +274,37 @@ SEARCH_INSTRUCTIONS = """
 # -----------------------------------------------------------------------------
 def get_image(name: str) -> Optional[List[str]]:
     """คืน URL รูป"""
-    return ["https://www.google.com/url?sa=i&url=https%3A%2F%2Fth.airportels.asia%2Fthailand-travel%2Fthai-sea-travel-calender%2F&psig=AOvVaw3BfE2EkwVfjLCiBzbZ-53m&ust=1760064257413000&source=images&cd=vfe&opi=89978449&ved=0CBUQjRxqFwoTCJiT47eMlpADFQAAAAAdAAAAABAE"]
+    fb = ['https://www.google.com/url?sa=i&url=https%3A%2F%2Fen.wikipedia.org%2Fwiki%2FEarth&psig=AOvVaw36xZKFWyYUzy4qlT6wPZHr&ust=1764240021659000&source=images&cd=vfe&opi=89978449&ved=0CBUQjRxqFwoTCPCZiq_Qj5EDFQAAAAAdAAAAABAE'] * 3
+    
+    url = "https://www.googleapis.com/customsearch/v1"
+    
+    params = {
+        "q": name,
+        "cx": CX_ID,
+        "key": GOOGLE_CLOUD_API_KEY,
+        "searchType": "image",
+        "num": 3,
+        "safe": "active"
+    }
+
+    try:
+        # ส่งคำขอไปยัง Google
+        response = requests.get(url, params=params)
+        data = response.json()
+        
+        if 'error' in data:
+            return f"Google API Error: {data['error']['message']}", fb
+            
+        # เช็คกรณีค้นหาไม่เจอ
+        if 'items' not in data:
+            return f"ไม่พบรูปภาพสำหรับคำว่า: {name}", fb
+            
+        # ดึง link รูปภาพจากผลลัพธ์
+        image_urls = [item['link'] for item in data['items']]
+        return None, image_urls
+
+    except Exception as e:
+        return f"เกิดข้อผิดพลาดของระบบ: {e}", fb
 
 def get_map_url(name: str) -> Optional[str]:
     """คืน URL แผนที่"""
@@ -303,11 +336,13 @@ def enrich_place_detail(p: PlaceDetail) -> PlaceDetail:
                 p.coordinates = coords
         if not p.google_maps_url:
             p.google_maps_url = get_map_url(p.name)
-        if not p.image_url:
-            img = get_image(p.name)
+        if not p.image_url and GOOGLE_CLOUD_API_KEY is not None and CX_ID is not None:
+            error, img = get_image(p.name)
+            if error:
+                logger.warning(error)
             p.image_url = img if img else None
     except Exception as e:
-        logger.warning(f"enrich_place_detail(mock): error for '{p.name}': {e}")
+        logger.warning(f"enrich_place_detail: error for '{p.name}': {e}")
     return p
 
 def enrich_all_places(plan: PlanResponse) -> PlanResponse:
@@ -615,12 +650,12 @@ async def weather(req: WeatherRequest):
 # Entrypoint
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8000)
 
 
 """
 API Usage Overview
-ระบบให้บริการผ่าน FastAPI พร้อม Swagger UI ที่ /docs (ค่าเริ่มต้น host 0.0.0.0, port 8000) เพื่อทดลองเรียกใช้งานได้ทันที หากต้องการสื่อสารกับ API โดยตรงให้ดูรายละเอียดแต่ละ endpoint ด้านล่าง
+ระบบให้บริการผ่าน FastAPI พร้อม Swagger UI ที่ /docs (ค่าเริ่มต้น host 127.0.0.1, port 8000) เพื่อทดลองเรียกใช้งานได้ทันที หากต้องการสื่อสารกับ API โดยตรงให้ดูรายละเอียดแต่ละ endpoint ด้านล่าง
 
 การสร้างแผนใหม่ - POST /makeplan
 - ส่งคำสั่งภาษาไทยในฟิลด์ `input` เช่น “วางแผนเที่ยวเชียงใหม่ 3 วัน เน้นคาเฟ่”

@@ -214,7 +214,7 @@ class ChangePasswordPage extends GetView<AuthController> {
                   Obx(() {
                     return AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      child: controller.isLoading.value
+                      child: controller.isGenerating.value
                           ? Container(
                               height: 56,
                               decoration: BoxDecoration(
