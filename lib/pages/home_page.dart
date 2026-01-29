@@ -9,7 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../controllers/auth_controller.dart';
 import '../../controllers/dashboard_controller.dart';
 
-// 🎨 Theme Colors
+// Theme Colors
 const Color primaryColor = Color(0xFF6366F1);
 const Color secondaryColor = Color(0xFF8B5CF6);
 const Color accentColor = Color(0xFFEC4899);

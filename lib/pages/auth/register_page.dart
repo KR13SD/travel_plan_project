@@ -71,7 +71,7 @@ class RegisterPage extends StatelessWidget {
     );
   }
 
-  // 👇 Multi-select Chips
+  // Multi-select Chips
   Widget _buildTravelStyleChips() {
     return Obx(() {
       return Wrap(
@@ -244,7 +244,7 @@ class RegisterPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 24),
 
-                            // 👇 Travel Style (multi-select)
+                            // Travel Style (multi-select)
                             Text(
                               'travelStyleTitle'.tr, // เพิ่ม key เช่น: "สไตล์การท่องเที่ยว (เลือกได้หลายแบบ)"
                               style: GoogleFonts.kanit(

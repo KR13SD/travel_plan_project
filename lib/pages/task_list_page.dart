@@ -29,7 +29,7 @@ class _TaskListPageState extends State<TaskListPage>
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
 
-  // 🎨 Primary theme green
+  // Primary theme green
   static const Color kPrimary1 = Color(0xFF10B981); // emerald-500
   static const Color kPrimary2 = Color(0xFF059669); // emerald-600
 
@@ -289,7 +289,7 @@ class _TaskListPageState extends State<TaskListPage>
               ),
             ),
 
-            // 👇 ปุ่ม Join
+            //  ปุ่ม Join
             IconButton(
               tooltip: 'เข้าร่วมแผนด้วยโค้ด',
               icon: const Icon(Icons.group_add_rounded, color: Colors.white),
@@ -517,7 +517,7 @@ class _TaskListPageState extends State<TaskListPage>
       statusIcon = Icons.warning_rounded;
     }
 
-    // ✅ นับจาก checklist โดยตรง (ไม่พึ่ง field พิเศษ)
+    // นับจาก checklist โดยตรง 
     final int subtaskCount = task.checklist.length;
     final int planCount = task.checklist
         .where((e) => (e['type'] ?? '').toString() != 'hotel')
@@ -1120,7 +1120,6 @@ class _TaskListPageState extends State<TaskListPage>
     try {
       final ref = FirebaseFirestore.instance.collection('tasks').doc(task.id);
 
-      // Firestore: เอาตัวเองออกจากทุกบทบาท + memberUids
       await ref.update({
         'memberUids': FieldValue.arrayRemove([uid]),
         'viewerUids': FieldValue.arrayRemove([uid]),
@@ -1128,7 +1127,6 @@ class _TaskListPageState extends State<TaskListPage>
         'updatedAt': FieldValue.serverTimestamp(),
       });
 
-      // Optimistic UI: เอาออกจาก list ทันที
       final idx = controller.allTasks.indexWhere((t) => t.id == task.id);
       if (idx != -1) {
         controller.allTasks.removeAt(idx);

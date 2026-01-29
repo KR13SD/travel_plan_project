@@ -2,11 +2,6 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-/// โครงสร้างโค้ดเชิญ:
-/// - tasks/{taskId}/invites/{autoId} : ไว้ดูประวัติในหน้า Task
-/// - invites/{CODE}                  : lookup เร็วตอน join
-///
-/// Roles: 'viewer' | 'editor'
 class InviteService {
   final FirebaseFirestore _fs;
   final FirebaseAuth _auth;
@@ -96,7 +91,7 @@ class InviteService {
     final normalized = code.trim().toUpperCase();
     if (normalized.isEmpty) throw Exception('Invalid invite code');
 
-    // 1) อ่านโค้ด
+    // อ่านโค้ด
     final codeSnap = await _codeRef(normalized).get();
     if (!codeSnap.exists) {
       throw Exception('โค้ดเชิญไม่ถูกต้อง');
@@ -111,7 +106,7 @@ class InviteService {
     final int? maxUses = (data['maxUses'] as num?)?.toInt();
     final int usedCount = (data['usedCount'] as num?)?.toInt() ?? 0;
 
-    // 2) เช็ควันหมดอายุ / โควต้า
+    // เช็ควันหมดอายุ / โควต้า
     if (expTs != null && expTs.toDate().isBefore(DateTime.now())) {
       throw Exception('โค้ดเชิญหมดอายุแล้ว');
     }
@@ -126,12 +121,12 @@ class InviteService {
     final tData = taskSnap.data() as Map<String, dynamic>? ?? {};
     final owner = (tData['uid'] ?? '').toString();
 
-    // 3) กัน owner ใช้โค้ดเข้าแผนตัวเอง
+    // กัน owner ใช้โค้ดเข้าแผนตัวเอง
     if (owner == uid) {
       throw Exception('คุณเป็นเจ้าของแผนนี้อยู่แล้ว');
     }
 
-    // 4) กันสมาชิกซ้ำ
+    // กันสมาชิกซ้ำ
     final editors = List<String>.from(tData['editorUids'] ?? const []);
     final viewers = List<String>.from(tData['viewerUids'] ?? const []);
     final members = <String>{}
@@ -143,7 +138,7 @@ class InviteService {
       throw Exception('คุณอยู่ในแผนนี้อยู่แล้ว');
     }
 
-    // 5) (ออปชัน) กัน “ทับซ้อนแผน” กับแผนที่เราเป็น owner (ถ้าต้องการ)
+
     if (checkOverlapWithOwnedPlans) {
       final Timestamp? sTs = tData['startDate'] as Timestamp?;
       final Timestamp? eTs = tData['endDate'] as Timestamp?;
@@ -169,7 +164,7 @@ class InviteService {
       }
     }
 
-    // 6) เข้าร่วมจริง — ใช้ Transaction เพื่อกัน race & update usedCount เฉพาะตอน join สำเร็จ
+    // เข้าร่วมจริง
     await _fs.runTransaction((trx) async {
       final freshCode = await trx.get(_codeRef(normalized));
       if (!freshCode.exists) {
@@ -213,7 +208,6 @@ class InviteService {
         'viewerUids': fViewers.toSet().toList(),
         'memberUids': fMembers.toList(),
         'updatedAt': FieldValue.serverTimestamp(),
-        // ไม่ต้องพึ่ง _joinCode แล้ว เพราะเรา validate ฝั่งแอป ไม่ใช้ rules
       });
 
       trx.update(_codeRef(normalized), {'usedCount': FieldValue.increment(1)});

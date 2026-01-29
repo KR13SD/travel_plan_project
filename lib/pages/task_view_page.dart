@@ -577,7 +577,7 @@ class _TaskViewPageState extends State<TaskViewPage>
       ...(item['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
     ];
 
-    // ✅ ใช้ Logic แก้พิกัดจาก AiImportPage
+    // ใช้ Logic แก้พิกัดจาก AiImportPage
     final double? lat = _parseCoordinate(item['lat']);
     final double? lng = _parseCoordinate(item['lng']);
 
@@ -648,7 +648,7 @@ class _TaskViewPageState extends State<TaskViewPage>
             ],
           ),
 
-          // ✅ ฝังแผนที่ Interactive แบบ AiImportPage
+          // ฝังแผนที่ Interactive แบบ AiImportPage
           if (lat != null && lng != null) ...[
             const SizedBox(height: 12),
             ClipRRect(
@@ -694,7 +694,7 @@ class _TaskViewPageState extends State<TaskViewPage>
       ...(h['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
     ];
 
-    // ✅ ใช้ Logic แก้พิกัดจาก AiImportPage
+    // ใช้ Logic แก้พิกัดจาก AiImportPage
     final double? lat = _parseCoordinate(h['lat']);
     final double? lng = _parseCoordinate(h['lng']);
 
@@ -739,7 +739,7 @@ class _TaskViewPageState extends State<TaskViewPage>
             Text(notes, style: const TextStyle(color: Color(0xFF374151), height: 1.5)),
           ],
 
-          // ✅ ฝังแผนที่ Interactive สำหรับโรงแรม
+          // ฝังแผนที่ Interactive สำหรับโรงแรม
           if (lat != null && lng != null) ...[
             const SizedBox(height: 12),
             ClipRRect(

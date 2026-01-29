@@ -180,7 +180,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
-  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ (รองรับ google maps และชอร์ตลิงก์ยอดฮิต)
+  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ 
   String _stripMapLinks(String text) {
     if (text.trim().isEmpty) return text;
     final lines = text.split(RegExp(r'\r?\n'));
@@ -345,7 +345,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       return;
     }
 
-    // ให้ AI ปรับแผนก่อนเซฟ (เงียบๆ)
+    // ให้ AI ปรับแผนก่อนเซฟ 
     {
       final defaultPrompt = _aiPromptCtrl.text.trim().isNotEmpty
           ? _aiPromptCtrl.text
@@ -357,7 +357,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       }
     }
 
-    // แตก plan / hotel และทำความสะอาดข้อมูล
+    // แตก plan / hotel ออกเป็นสองลิสต์
     final List<Map<String, dynamic>> plans = [];
     final List<Map<String, dynamic>> hotels = [];
 
@@ -520,7 +520,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
-  // เรียก AI แบบใช้ซ้ำ (เงียบๆ ได้)
+  // เรียก AI แบบใช้ซ้ำ 
   Future<bool> _runAiAdjust({String? overridePrompt, bool quiet = true}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;

@@ -10,7 +10,7 @@ import 'package:intl/intl.dart';
 import '../../controllers/dashboard_controller.dart';
 import '../../models/task_model.dart';
 
-// ✅ เปลี่ยนสีหลักของหน้านี้ให้เข้ากับธีมใหม่
+
 const Color primaryColor = Color(0xFF06B6D4); // cyan-500
 
 class DashboardPage extends StatefulWidget {
@@ -282,7 +282,7 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  /// Modern AppBar สไตล์เดียวกับ TaskListPage (มีแอนิเมชัน)
+  /// Modern AppBar 
   Widget _buildModernAppBar({required String title, String? subtitle}) {
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -430,7 +430,6 @@ class _DashboardPageState extends State<DashboardPage>
   Widget _buildFloatingActionButton() {
     return Container(
       decoration: BoxDecoration(
-        // ✅ FAB เปลี่ยนเป็นกราเดียนต์ธีมใหม่
         gradient: const LinearGradient(
           colors: [Color(0xFF06B6D4), Color(0xFF0891B2)],
         ),
@@ -634,87 +633,6 @@ class _DashboardPageState extends State<DashboardPage>
     );
   }
 
-  // ในหน้า Dashboard หรือ Home
-  Widget _buildAiStatusOverlay() {
-    // ดึง Controller มา (ใช้ find เพราะถูกสร้างไปแล้วในหน้า AI Import)
-    // ถ้ากลัว Error กรณีเครื่องยังไม่เคยเข้าหน้า AI Import ให้ใช้ Get.put แทน
-    final AiImportController aiCtrl = Get.find<AiImportController>();
-
-    return Obx(() {
-      // ถ้าไม่ได้กำลังโหลด และ ไม่มีข้อมูลค้างอยู่ ไม่ต้องแสดงอะไร
-      if (!aiCtrl.isGenerating.value && aiCtrl.previewTasks.isEmpty) {
-        return const SizedBox.shrink();
-      }
-
-      return GestureDetector(
-        onTap: () => Get.to(() => const AiImportPage()), // กดแล้วกลับไปหน้า AI
-        child: Container(
-          width: double.infinity,
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: aiCtrl.isGenerating.value
-                ? Colors.blue.shade50
-                : Colors.green.shade50,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: aiCtrl.isGenerating.value
-                  ? Colors.blue.shade200
-                  : Colors.green.shade200,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 4,
-                offset: const Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // ไอคอนเปลี่ยนตามสถานะ
-              aiCtrl.isGenerating.value
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.check_circle, color: Colors.green),
-              const SizedBox(width: 12),
-
-              // ข้อความบอกสถานะ
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      aiCtrl.isGenerating.value
-                          ? "AI กำลังสร้างแผนงาน..."
-                          : "AI สร้างแผนงานเสร็จแล้ว!",
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: aiCtrl.isGenerating.value
-                            ? Colors.blue.shade900
-                            : Colors.green.shade900,
-                      ),
-                    ),
-                    Text(
-                      aiCtrl.isGenerating.value
-                          ? "คุณสามารถทำงานอื่นรอได้"
-                          : "แตะเพื่อดูและบันทึกลงโปรเจกต์",
-                      style: TextStyle(fontSize: 12, color: Colors.black54),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios, size: 14, color: Colors.grey),
-            ],
-          ),
-        ),
-      );
-    });
-  }
 
   Widget _buildAdvancedPriorityChip(
     String priority,

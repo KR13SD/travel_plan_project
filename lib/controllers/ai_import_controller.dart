@@ -61,7 +61,7 @@ class AiImportController extends GetxController {
   }
 
   // ======================
-  // SCHEMA NORMALIZER (สำคัญมาก)
+  // SCHEMA NORMALIZER 
   // ======================
   Map<String, dynamic> _ensureTaskSchema(Map<String, dynamic> item) {
     return {

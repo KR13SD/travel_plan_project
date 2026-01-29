@@ -28,7 +28,6 @@ class _InviteSheetState extends State<InviteSheet> {
     super.dispose();
   }
 
-  /// ส่งต่อเป็นสิ้นวัน (23:59:59.999)
   DateTime? _effectiveExpiresAt() {
     if (_expiresAt == null) return null;
     final d = _expiresAt!;

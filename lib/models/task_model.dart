@@ -87,7 +87,7 @@ class TaskModel {
     final end = _toDate(json['endDate']) ?? DateTime.now();
     final doneAt = _toDate(json['completedAt']);
 
-    /// ✅ checklist (deep copy ป้องกัน lat/lng ซ้ำ)
+
     final List<Map<String, dynamic>> checklist = [];
     for (final item in (json['checklist'] as List? ?? const [])) {
       if (item is Map) {
@@ -134,7 +134,7 @@ class TaskModel {
   }
 
   // ===========================
-  // 🔼 TO JSON (Firestore)
+  //  TO JSON (Firestore)
   // ===========================
   Map<String, dynamic> toJson() {
     Map<String, dynamic> _serializeChecklist(Map<String, dynamic> m) {
@@ -172,7 +172,7 @@ class TaskModel {
   }
 
   // ===========================
-  // ✏️ COPY WITH
+  // COPY WITH
   // ===========================
   TaskModel copyWith({
     String? id,
@@ -205,7 +205,7 @@ class TaskModel {
   }
 
   // ===========================
-  // 🔐 PERMISSION HELPERS
+  // PERMISSION HELPERS
   // ===========================
   bool isOwner(String userId) => userId == uid;
   bool canEdit(String userId) => isOwner(userId) || editorUids.contains(userId);

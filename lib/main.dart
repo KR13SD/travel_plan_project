@@ -34,14 +34,11 @@ void main() async {
   await Firebase.initializeApp();
   await GetStorage.init();
 
-  // (ถ้าต้องใช้รูปแบบวันที่ไทยด้วย)
   await initializeDateFormatting('en_US', null);
   await initializeDateFormatting('th_TH', null);
 
-  // ✅ ใช้ LocalizationService instance เดียวทั้งแอพ
   final ls = Get.put(LocalizationService(), permanent: true);
 
-  // โหลด locale ที่เคยเซฟไว้ แล้วอัปเดตให้ทั้งแอพตั้งแต่เริ่ม
   final saved = ls.getSavedLocale() ?? LocalizationService.locale;
   Get.updateLocale(saved);
   ls.currentLocale.value = saved; // sync ให้ Obx รับรู้ค่าเริ่มต้น
@@ -58,13 +55,12 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ ผูก GetMaterialApp กับ currentLocale แบบ reactive
+
     return Obx(() {
       return GetMaterialApp(
         title: 'AI Task Manager',
         debugShowCheckedModeBanner: false,
 
-        // ✅ ใช้ instance เดียว ไม่สร้าง LocalizationService() ใหม่
         translations: ls,
         locale: ls.currentLocale.value,
         fallbackLocale: LocalizationService.fallbackLocale,

@@ -42,7 +42,7 @@ class AiApiService {
     );
   }
 
-  /// 👇 อันนี้คืออันที่ TaskDetailPage จะใช้
+  
   static Future<Map<String, dynamic>> adjustPlan(Map<String, dynamic> body) async {
     final taskId = (body['task']?['id'] ?? '').toString();
     final instruction = (body['prompt'] ?? '').toString();
@@ -121,7 +121,7 @@ class AiApiService {
     return Map<String, dynamic>.from(first as Map);
   }
 
-  // ✅ helper ดึงรูป: คืนทั้ง images และ cover image
+
   static Map<String, dynamic> _extractImages(Map<String, dynamic> source) {
     final raw = source['image_url'];
     final List<String> images = (raw is List)
@@ -277,7 +277,6 @@ class AiApiService {
           lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
         }
 
-        // ✅ ดึงรูปจาก place.image_url
         final img = _extractImages(place);
 
         list.add({
@@ -326,7 +325,6 @@ class AiApiService {
         lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
       }
 
-      // ✅ ดึงรูปจาก hotel.image_url
       final img = _extractImages(m);
 
       result.add({
@@ -358,7 +356,7 @@ class AiApiService {
     return '${m}m';
   }
 
-  // ===== changePlan เดิม (ปรับเล็กน้อย) =====
+  // ===== changePlan  =====
   static Future<List<Map<String, dynamic>>> changePlan({
     required String taskId,
     required String instruction,
@@ -478,7 +476,6 @@ class AiApiService {
       return 'Medium';
     }
 
-    // ✅ ส่ง images/image ไปด้วย (ถ้า backend จะใช้หรือคงไว้)
     final images = (m['images'] is List) ? (m['images'] as List).map((e) => e.toString()).toList() : null;
     final image = m['image']?.toString();
 

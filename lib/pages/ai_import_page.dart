@@ -40,7 +40,7 @@ class _AiImportPageState extends State<AiImportPage>
   final ScrollController _scrollCtrl = ScrollController();
   bool _showScrollToTop = false;
 
-  // ✅ เก็บ index รูปที่เลือกต่อการ์ด (กด thumbnail เปลี่ยนรูปหลัก)
+  // เก็บ index รูปที่เลือกต่อการ์ด 
   final Map<String, int> _selectedImageIndex = {}; // "plan-0" / "hotel-2"
 
   final DateFormat dateFormatter = DateFormat('dd/MM/yyyy');
@@ -194,7 +194,7 @@ class _AiImportPageState extends State<AiImportPage>
             ? (h['lng'] as num).toDouble()
             : (h['lng'] is String ? double.tryParse(h['lng']) : null);
 
-        // ✅ รูปโรงแรม (ถ้ามี)
+        // รูปโรงแรม (ถ้ามี)
         final String? image = h['image']?.toString();
         final List<String> images = (h['images'] as List? ?? const [])
             .map((e) => e.toString())
@@ -1448,7 +1448,7 @@ class _AiImportPageState extends State<AiImportPage>
             ),
           ),
 
-          // ✅ Better Image UI
+          // Better Image UI
           if (imagesAll.isNotEmpty)
             _buildHeroImage(
               images: imagesAll,
@@ -1690,7 +1690,7 @@ class _AiImportPageState extends State<AiImportPage>
     );
   }
 
-  // ปุ่ม SAVE ลอย
+  // ปุ่ม SAVE 
   Widget _buildBottomSaveBar() {
     if (aiCtrl.previewTasks.isEmpty) return const SizedBox.shrink();
 
