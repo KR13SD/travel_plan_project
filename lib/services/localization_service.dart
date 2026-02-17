@@ -254,6 +254,61 @@ class LocalizationService extends Translations {
       'oct': 'ต.ค.',
       'nov': 'พ.ย.',
       'dec': 'ธ.ค.',
+
+      // Header
+      'joinPlan': 'เข้าร่วมแผน',
+      'joinPlanSubtitle': 'กรอกโค้ดเชิญเพื่อเข้าร่วมแผนการเดินทาง',
+
+      // Welcome
+      'welcome': 'ยินดีต้อนรับ!',
+      'welcomeJoinMessage':
+          'คุณสามารถเข้าร่วมแผนการเดินทางของเพื่อนได้ด้วยโค้ดเชิญ',
+
+      // Input
+      'inviteCode': 'โค้ดเชิญ',
+      'codeLength': 'โค้ดต้องมี 6 ตัวอักษร',
+      'paste': 'วาง',
+
+      // Button
+      'joinPlanButton': 'เข้าร่วมแผน',
+      'joiningPlan': 'กำลังเข้าร่วม...',
+
+      // Info section
+      'infoTitle': 'ข้อมูลเพิ่มเติม',
+      'validCodeTitle': 'โค้ดต้องถูกต้อง',
+      'validCodeDesc': 'ตรวจสอบให้แน่ใจว่าโค้ดเชิญถูกต้องและยังไม่หมดอายุ',
+
+      'codeExpiryTitle': 'โค้ดมีวันหมดอายุ',
+      'codeExpiryDesc': 'โค้ดบางรายการอาจหมดอายุหรือถูกใช้ครบจำนวนแล้ว',
+
+      'joinImmediateTitle': 'เข้าร่วมทันที',
+      'joinImmediateDesc': 'เมื่อโค้ดถูกต้อง คุณจะเข้าร่วมแผนได้ทันที',
+
+      // Errors / Snackbar
+      'pleaseEnterInviteCode': 'กรุณากรอกโค้ดเชิญ',
+      'joinPlanSuccess': 'เข้าร่วมแผนสำเร็จ 🎉',
+
+      'alreadyOwner': 'คุณเป็นเจ้าของแผนนี้อยู่แล้ว',
+      'alreadyInPlan': 'คุณอยู่ในแผนนี้แล้ว',
+      'inviteExpired': 'โค้ดเชิญหมดอายุแล้ว',
+      'inviteMaxUsed': 'โค้ดถูกใช้ครบตามจำนวนแล้ว',
+      'planNotFound': 'ไม่พบแผนที่เกี่ยวข้อง',
+      'invalidInviteCode': 'โค้ดเชิญไม่ถูกต้อง',
+      'planTimeConflict': 'ช่วงเวลาชนกับแผนที่มีอยู่',
+      'joinFailed': 'เข้าร่วมแผนไม่สำเร็จ',
+
+      // ===== Task List Page =====
+      'subTitleTaskList': 'จัดการแผนการเดินทางทั้งหมดของคุณ',
+      'startdate': 'วันเริ่มต้น',
+      'duedate': 'วันสิ้นสุด',
+
+      'allPlans': 'แผนทั้งหมด',
+      'joinWithCode': 'เข้าร่วมด้วยโค้ดเชิญ',
+
+      'leavePlan': 'ออกจากแผน (ซ่อนเฉพาะของฉัน)',
+      'leavePlanConfirmTitle': 'ออกจากแผนนี้?',
+      'leavePlanConfirmDesc': 'คุณจะไม่เห็นแผนนี้ในรายการของคุณอีกต่อไป',
+      'confirmLeave': 'ยืนยัน',
     },
 
     'en_US': {
@@ -484,6 +539,62 @@ class LocalizationService extends Translations {
       'oct': 'Oct',
       'nov': 'Nov',
       'dec': 'Dec',
+
+      // Header
+      'joinPlan': 'Join Plan',
+      'joinPlanSubtitle': 'Enter an invite code to join a travel plan',
+
+      // Welcome
+      'welcome': 'Welcome!',
+      'welcomeJoinMessage':
+          'You can join your friend’s travel plan using an invite code.',
+
+      // Input
+      'inviteCode': 'Invite Code',
+      'codeLength': 'Code must contain 6 characters',
+      'paste': 'Paste',
+
+      // Button
+      'joinPlanButton': 'Join Plan',
+      'joiningPlan': 'Joining...',
+
+      // Info section
+      'infoTitle': 'Information',
+      'validCodeTitle': 'Valid Code Required',
+      'validCodeDesc': 'Make sure the invite code is correct and not expired.',
+
+      'codeExpiryTitle': 'Code Expiration',
+      'codeExpiryDesc': 'Some codes may expire or reach maximum usage limit.',
+
+      'joinImmediateTitle': 'Instant Access',
+      'joinImmediateDesc':
+          'Once the code is valid, you will join the plan immediately.',
+
+      // Errors / Snackbar
+      'pleaseEnterInviteCode': 'Please enter an invite code',
+      'joinPlanSuccess': 'Successfully joined the plan 🎉',
+
+      'alreadyOwner': 'You are already the owner of this plan',
+      'alreadyInPlan': 'You are already in this plan',
+      'inviteExpired': 'Invite code has expired',
+      'inviteMaxUsed': 'Invite code has reached maximum usage',
+      'planNotFound': 'Plan not found',
+      'invalidInviteCode': 'Invalid invite code',
+      'planTimeConflict': 'This plan conflicts with your existing plans',
+      'joinFailed': 'Failed to join plan',
+
+      // ===== Task List Page =====
+      'subTitleTaskList': 'Manage all your trip plans here',
+      'startdate': 'Start date',
+      'duedate': 'End date',
+
+      'allPlans': 'All plans',
+      'joinWithCode': 'Join with code',
+
+      'leavePlan': 'Leave plan (hide from my list)',
+      'leavePlanConfirmTitle': 'Leave this plan?',
+      'leavePlanConfirmDesc': 'This plan will no longer appear in your list',
+      'confirmLeave': 'Confirm',
     },
   };
 

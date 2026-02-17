@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import '../services/invite_service.dart';
 
@@ -15,8 +14,8 @@ class _InviteSheetState extends State<InviteSheet> {
   final _service = InviteService();
 
   final _formKey = GlobalKey<FormState>();
-  String _role = 'viewer'; // 'viewer' | 'editor'
-  DateTime? _expiresAt;    // local date only; will be normalized to 23:59:59
+  String _role = 'viewer';
+  DateTime? _expiresAt;
   final _maxUsesCtrl = TextEditingController();
 
   String? _generatedCode;
@@ -55,7 +54,7 @@ class _InviteSheetState extends State<InviteSheet> {
 
     setState(() {
       _loading = true;
-      _generatedCode = null; // reset
+      _generatedCode = null;
     });
 
     try {
@@ -65,42 +64,90 @@ class _InviteSheetState extends State<InviteSheet> {
 
       final code = await _service.createInviteCode(
         taskId: widget.taskId,
-        role: _role, // 'viewer' or 'editor'
+        role: _role,
         expiresAt: _effectiveExpiresAt(),
         maxUses: maxUses,
       );
 
       setState(() => _generatedCode = code);
       HapticFeedback.mediumImpact();
-      Get.snackbar(
-        'สำเร็จ',
-        'สร้างโค้ดเชิญเรียบร้อย',
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.green[600],
-        colorText: Colors.white,
-      );
+
+      // ✅ ใช้ ScaffoldMessenger แทน Get.snackbar
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 8),
+                Text('สร้างโค้ดเชิญเรียบร้อย'),
+              ],
+            ),
+            backgroundColor: Colors.green.shade600,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     } catch (e) {
       HapticFeedback.heavyImpact();
-      Get.snackbar(
-        'Error',
-        e.toString(),
-        snackPosition: SnackPosition.BOTTOM,
-        backgroundColor: Colors.red[600],
-        colorText: Colors.white,
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: Colors.red.shade600,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+          ),
+        );
+      }
     } finally {
-      setState(() => _loading = false);
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   Future<void> _copyAndClose() async {
     if (_generatedCode == null) return;
+
+    // ✅ คัดลอกก่อน
     await Clipboard.setData(ClipboardData(text: _generatedCode!));
-    if (!mounted) return;
     HapticFeedback.selectionClick();
+
+    if (!mounted) return;
+
+    // ✅ แสดง snackbar ผ่าน ScaffoldMessenger ก่อน pop
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.copy, color: Colors.white),
+            SizedBox(width: 8),
+            Text('คัดลอกโค้ดแล้ว'),
+          ],
+        ),
+        backgroundColor: Colors.green.shade600,
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    // ✅ รอนิดนึงให้ snackbar เริ่มแสดง แล้วค่อย pop
+    await Future.delayed(const Duration(milliseconds: 100));
+
+    if (!mounted) return;
+
+    // ✅ ใช้ Navigator.pop() เท่านั้น
     Navigator.of(context).pop(_generatedCode);
-    Get.snackbar('คัดลอกแล้ว', 'โค้ดเชิญถูกคัดลอกไปยังคลิปบอร์ด',
-        snackPosition: SnackPosition.BOTTOM);
   }
 
   @override
@@ -132,7 +179,6 @@ class _InviteSheetState extends State<InviteSheet> {
 
               Text('สร้างโค้ดเชิญ', style: Theme.of(context).textTheme.titleLarge),
 
-              // Role
               DropdownButtonFormField<String>(
                 value: _role,
                 items: const [
@@ -149,7 +195,6 @@ class _InviteSheetState extends State<InviteSheet> {
                 ),
               ),
 
-              // Max uses
               TextFormField(
                 controller: _maxUsesCtrl,
                 keyboardType: TextInputType.number,
@@ -170,7 +215,6 @@ class _InviteSheetState extends State<InviteSheet> {
                 enabled: !_loading,
               ),
 
-              // Expiry
               OutlinedButton.icon(
                 onPressed: _loading ? null : _pickExpiry,
                 icon: const Icon(Icons.event),
@@ -181,7 +225,6 @@ class _InviteSheetState extends State<InviteSheet> {
                 ),
               ),
 
-              // Create button
               SizedBox(
                 width: double.infinity,
                 height: 48,
@@ -204,7 +247,9 @@ class _InviteSheetState extends State<InviteSheet> {
                       const SizedBox(height: 8),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 10),
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.grey[100],
                           borderRadius: BorderRadius.circular(12),

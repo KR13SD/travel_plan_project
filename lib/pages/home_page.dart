@@ -1,5 +1,4 @@
 import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
-import 'package:ai_task_project_manager/pages/ai_import_page.dart';
 import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:auto_size_text/auto_size_text.dart';
 import 'package:flutter/material.dart';
@@ -340,6 +339,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     color: Colors.white.withOpacity(0.9),
                     fontSize: 14,
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -357,7 +357,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     return 'good-evening'.tr;
   }
 
-  // 🔹 Menu Grid
+  // 🔹 Menu Grid - FIXED VERSION
   Widget _buildMenuGrid() {
     final List<Map<String, dynamic>> menus = [
       {
@@ -384,14 +384,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'description': 'ai-assistance'.tr,
         'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
       },
-      // {
-      //   'icon': Icons.analytics_outlined,
-      //   'title': 'analytics'.tr,
-      //   'route': '/analytic',
-      //   'color': const Color(0xFFEF4444),
-      //   'description': 'track-progress'.tr,
-      //   'gradient': [const Color(0xFFEF4444), const Color(0xFFDC2626)],
-      // },
     ];
 
     return GridView.builder(
@@ -402,7 +394,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         crossAxisCount: 2,
         mainAxisSpacing: 20,
         crossAxisSpacing: 20,
-        childAspectRatio: 1.1,
+        childAspectRatio: 1.0, // ✅ เปลี่ยนจาก 1.1 เป็น 1.0 ให้สูงขึ้น
       ),
       itemBuilder: (context, index) {
         final menu = menus[index];
@@ -429,13 +421,15 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 ),
               ],
             ),
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(16), // ✅ ลด padding จาก 20 เป็น 16
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.center, // ✅ จัดกลาง
               children: [
                 Icon(menu['icon'], size: 36, color: Colors.white),
-                const SizedBox(height: 12),
-                Text(
+                const SizedBox(height: 10), // ✅ ลดจาก 12 เป็น 10
+                // ✅ ใช้ AutoSizeText สำหรับ title
+                AutoSizeText(
                   menu['title'],
                   style: const TextStyle(
                     color: Colors.white,
@@ -443,9 +437,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                     fontWeight: FontWeight.bold,
                   ),
                   textAlign: TextAlign.center,
+                  maxLines: 2,
+                  minFontSize: 12,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 6),
-                Text(
+                const SizedBox(height: 4), // ✅ ลดจาก 6 เป็น 4
+                // ✅ ใช้ AutoSizeText สำหรับ description
+                AutoSizeText(
                   menu['description'],
                   style: TextStyle(
                     color: Colors.white.withOpacity(0.9),
@@ -453,6 +451,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   ),
                   textAlign: TextAlign.center,
                   maxLines: 2,
+                  minFontSize: 10,
                   overflow: TextOverflow.ellipsis,
                 ),
               ],

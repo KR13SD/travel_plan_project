@@ -271,7 +271,7 @@ class _TaskListPageState extends State<TaskListPage>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'รวมแพลน',
+                    'allPlans'.tr,
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 28,
@@ -291,10 +291,10 @@ class _TaskListPageState extends State<TaskListPage>
 
             //  ปุ่ม Join
             IconButton(
-              tooltip: 'เข้าร่วมแผนด้วยโค้ด',
+              tooltip: 'joinWithCode'.tr,
               icon: const Icon(Icons.group_add_rounded, color: Colors.white),
-              onPressed: () {
-                Get.to(() => const JoinPlanPage());
+              onPressed: () async {
+                await Get.to(() => const JoinPlanPage());
               },
             ),
           ],
@@ -517,7 +517,7 @@ class _TaskListPageState extends State<TaskListPage>
       statusIcon = Icons.warning_rounded;
     }
 
-    // นับจาก checklist โดยตรง 
+    // นับจาก checklist โดยตรง
     final int subtaskCount = task.checklist.length;
     final int planCount = task.checklist
         .where((e) => (e['type'] ?? '').toString() != 'hotel')
@@ -957,13 +957,15 @@ class _TaskListPageState extends State<TaskListPage>
       ),
       child: FloatingActionButton.extended(
         heroTag: 'fab_join_plan',
-        onPressed: () => Get.to(() => const JoinPlanPage()),
+        onPressed: () async {
+          await Get.to(() => const JoinPlanPage());
+        },
         backgroundColor: Colors.white,
         foregroundColor: kPrimary2,
         elevation: 0,
         icon: const Icon(Icons.group_add_rounded),
-        label: const Text(
-          'เข้าร่วมแผนด้วยโค้ด',
+        label: Text(
+          'joinWithCode'.tr,
           style: TextStyle(fontWeight: FontWeight.w600),
         ),
       ),

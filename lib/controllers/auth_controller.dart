@@ -273,7 +273,7 @@ class AuthController extends GetxController {
       isGenerating.value = true;
       await _authService.loginWithEmail(email, password);
       _listenToUserProfile();
-      Get.offAllNamed('/home');
+      Get.offNamed('/home');
     } on FirebaseAuthException catch (e) {
       Get.snackbar('Login failed', e.message ?? 'เกิดข้อผิดพลาด');
     } catch (e) {
