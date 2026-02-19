@@ -145,7 +145,7 @@ class RegisterPage extends StatelessWidget {
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
-                        onPressed: () => Get.back(),
+                        onPressed: () => Navigator.of(context).pop(),
                         icon: const Icon(Icons.arrow_back_ios_new, color: Colors.white, size: 20),
                       ),
                     ),
@@ -189,7 +189,7 @@ class RegisterPage extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'สร้างบัญชีใหม่เพื่อเริ่มต้นใช้งาน',
+                              '',
                               textAlign: TextAlign.center,
                               style: GoogleFonts.kanit(fontSize: 16, color: Colors.grey[600]),
                             ),
@@ -330,7 +330,7 @@ class RegisterPage extends StatelessWidget {
                                     style: GoogleFonts.kanit(color: Colors.grey[600], fontSize: 16),
                                   ),
                                   TextButton(
-                                    onPressed: () => Get.back(),
+                                    onPressed: () => Navigator.of(context).pop(),
                                     child: Text(
                                       'backToLogin'.tr,
                                       style: GoogleFonts.kanit(

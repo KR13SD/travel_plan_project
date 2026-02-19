@@ -18,6 +18,7 @@ class AiApiService {
   static const String baseUrl = String.fromEnvironment(
     'AI_API_BASE_URL',
     defaultValue: 'http://10.0.2.2:8000',
+    // defaultValue: 'https://4dd5-2405-9800-b550-8930-d109-7345-6707-ad6e.ngrok-free.app',
   );
 
   // ---------- PUBLIC ----------

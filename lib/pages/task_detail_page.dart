@@ -8,10 +8,11 @@ import 'package:intl/intl.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/services.dart';
 
 import '../controllers/dashboard_controller.dart';
 import '../models/task_model.dart';
-import '../services/ai_api_service.dart'; // 👈 เรียก AI ปรับแผน
+import '../services/ai_api_service.dart'; //
 
 class TaskDetailPage extends StatefulWidget {
   final TaskModel task;
@@ -65,7 +66,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final latestTask = controller.findTaskById(widget.task.id) ?? widget.task;
 
     // copy checklist แล้ว normalize
-    editedChecklist = (latestTask.checklist ?? []).map<Map<String, dynamic>>((raw) {
+    editedChecklist = (latestTask.checklist ?? []).map<Map<String, dynamic>>((
+      raw,
+    ) {
       final m = Map<String, dynamic>.from(raw);
 
       // normalize type
@@ -180,7 +183,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
-  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ 
+  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ
   String _stripMapLinks(String text) {
     if (text.trim().isEmpty) return text;
     final lines = text.split(RegExp(r'\r?\n'));
@@ -258,7 +261,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final t = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!t.canEdit(uid)) {
-      _showErrorSnackbar('คุณไม่มีสิทธิ์ลบรายการนี้');
+      _showErrorSnackbar('noDeletePermission'.tr);
       return;
     }
     if (_aiBusy) return;
@@ -335,7 +338,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!latest.canEdit(uid)) {
-      _showErrorSnackbar('คุณไม่มีสิทธิ์แก้ไขทริปนี้');
+      _showErrorSnackbar('noPermission'.tr);
       return;
     }
     if (_aiBusy) return;
@@ -345,14 +348,14 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       return;
     }
 
-    // ให้ AI ปรับแผนก่อนเซฟ 
+    // ให้ AI ปรับแผนก่อนเซฟ
     {
       final defaultPrompt = _aiPromptCtrl.text.trim().isNotEmpty
           ? _aiPromptCtrl.text
           : 'ตรวจสอบความทับซ้อนของเวลา/เส้นทาง ปรับเวลาให้เหมาะสมต่อเนื่องตามวันเดินทาง และคงลำดับตรรกะของทริป';
       final ok = await _runAiAdjust(overridePrompt: defaultPrompt, quiet: true);
       if (!ok) {
-        _showErrorSnackbar('หยุดบันทึก: ให้ AI ปรับไม่สำเร็จ');
+        _showErrorSnackbar('aiAdjustFailed'.tr);
         return;
       }
     }
@@ -380,7 +383,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
       if (m['type'] == 'hotel') {
         final key = _hotelKey(i, raw);
-        m['selectedHotel'] = (_selectedHotelKey != null && key == _selectedHotelKey);
+        m['selectedHotel'] =
+            (_selectedHotelKey != null && key == _selectedHotelKey);
         hotels.add(m);
       } else {
         // ตัดบรรทัดลิงก์ใน description ออกก่อนบันทึก
@@ -399,7 +403,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       return h;
     }).toList();
 
-    final selected = finalHotels.where((h) => h['selectedHotel'] == true).toList();
+    final selected = finalHotels
+        .where((h) => h['selectedHotel'] == true)
+        .toList();
     if (selected.isNotEmpty) {
       finalHotels = [selected.first];
     }
@@ -417,7 +423,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     // เขียนลง Firestore
     try {
       await controller.updateTask(updatedTask);
-      _showSuccessSnackbar('บันทึกแผนเที่ยวแล้ว');
+      _showSuccessSnackbar('saveSuccess'.tr);
       Future.delayed(const Duration(milliseconds: 400), () {
         if (mounted) Navigator.of(context).pop(true);
       });
@@ -433,19 +439,19 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!latest.canEdit(uid)) {
-      _showErrorSnackbar('คุณไม่มีสิทธิ์แก้ไขทริปนี้');
+      _showErrorSnackbar('noPermission'.tr);
       return;
     }
 
     final prompt = _aiPromptCtrl.text.trim();
     if (prompt.isEmpty) {
-      _showErrorSnackbar('พิมพ์สิ่งที่อยากให้ AI ปรับก่อน');
+      _showErrorSnackbar('aiPromptEmpty'.tr);
       return;
     }
 
     setState(() {
       _aiBusy = true;
-      _aiBusyReason = 'กำลังให้ AI ปรับแผน...';
+      _aiBusyReason = 'aiProcessing'.tr;
     });
 
     try {
@@ -507,9 +513,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         }
       });
 
-      _showSuccessSnackbar('AI ปรับแผนให้แล้ว');
+      _showSuccessSnackbar('aiAdjustSuccess'.tr);
     } catch (e) {
-      _showErrorSnackbar('ปรับแผนไม่สำเร็จ: $e');
+      _showErrorSnackbar('aiAdjustFailed'.tr);
     } finally {
       if (mounted) {
         setState(() {
@@ -520,7 +526,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     }
   }
 
-  // เรียก AI แบบใช้ซ้ำ 
+  // เรียก AI แบบใช้ซ้ำ
   Future<bool> _runAiAdjust({String? overridePrompt, bool quiet = true}) async {
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;
@@ -531,7 +537,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
     setState(() {
       _aiBusy = true;
-      _aiBusyReason = 'กำลังให้ AI ปรับแผน...';
+      _aiBusyReason = 'aiProcessing'.tr;
     });
 
     try {
@@ -591,10 +597,10 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           editedEndDate = DateTime.tryParse(aiEnd) ?? editedEndDate;
       });
 
-      if (!quiet) _showSuccessSnackbar('AI ปรับแผนให้แล้ว');
+      if (!quiet) _showSuccessSnackbar('aiAdjustSuccess'.tr);
       return true;
     } catch (e) {
-      _showErrorSnackbar('ปรับแผนไม่สำเร็จ: $e');
+      _showErrorSnackbar('aiAdjustFailed'.tr);
       return false;
     } finally {
       if (mounted) {
@@ -618,7 +624,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   }
 
   int? _findNextSameType(int currentIndex, bool isHotel) {
-    final type = isHotel ? 'hotel' : 'plan';
+    final type = isHotel ? 'hotel' : 'plan  ';
     for (int i = currentIndex + 1; i < editedChecklist.length; i++) {
       if ((editedChecklist[i]['type'] ?? 'plan') == type) {
         return i;
@@ -738,7 +744,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             actions: [
               if (isOwner)
                 IconButton(
-                  tooltip: 'เชิญเข้าร่วม',
+                  tooltip: 'invite'.tr,
                   icon: const Icon(Icons.person_add_alt_1_rounded),
                   onPressed: () {
                     showModalBottomSheet(
@@ -788,7 +794,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                             const SizedBox(width: 8),
                             Expanded(
                               child: Text(
-                                _aiBusyReason ?? 'กำลังประมวลผลด้วย AI…',
+                                _aiBusyReason ?? 'aiProcessing'.tr,
                                 style: const TextStyle(
                                   color: Color(0xFF1D4ED8),
                                   fontWeight: FontWeight.w600,
@@ -803,13 +809,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
                     // ทริป
                     _buildSectionCard(
-                      title: 'ชื่อทริป',
+                      title: 'tripName'.tr,
                       icon: Icons.flight_takeoff_rounded,
                       child: TextFormField(
                         controller: titleController,
                         readOnly: !canEdit || _aiBusy,
                         decoration: InputDecoration(
-                          hintText: 'เช่น เที่ยวกรุงเทพ 2 วัน 1 คืน',
+                          hintText: 'hintTripName'.tr,
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12),
                             borderSide: BorderSide.none,
@@ -830,13 +836,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
                     // วันที่
                     _buildSectionCard(
-                      title: 'วันที่เดินทาง',
+                      title: 'date'.tr,
                       icon: Icons.calendar_today,
                       child: Row(
                         children: [
                           Expanded(
                             child: _buildDateCard(
-                              'เริ่ม',
+                              'start'.tr,
                               editedStartDate,
                               true,
                               canEdit: canEdit && !_aiBusy,
@@ -847,7 +853,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           const SizedBox(width: 12),
                           Expanded(
                             child: _buildDateCard(
-                              'สิ้นสุด',
+                              'end'.tr,
                               editedEndDate,
                               false,
                               canEdit: canEdit && !_aiBusy,
@@ -866,7 +872,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
                     // แผน / กิจกรรม
                     _buildSectionCard(
-                      title: 'แผน / กิจกรรม',
+                      title: 'tripPlan'.tr,
                       icon: Icons.route_rounded,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -874,7 +880,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           Row(
                             children: [
                               Text(
-                                'รายการ: ${plans.length}',
+                                '${'items'.tr}: ${plans.length}',
                                 style: TextStyle(
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w600,
@@ -883,18 +889,21 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               const Spacer(),
                               if (canEdit && !_aiBusy)
                                 TextButton.icon(
-                                  onPressed: () => addChecklistItem(type: 'plan'),
+                                  onPressed: () =>
+                                      addChecklistItem(type: 'plan'),
                                   icon: const Icon(Icons.add_circle_outline),
-                                  label: const Text('เพิ่มสถานที่'),
+                                  label: Text('addPlace'.tr),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           if (plans.isEmpty)
-                            _emptyBox('ยังไม่มีแผน เพิ่มสถานที่เลย')
+                            _emptyBox('noPlansYet'.tr)
                           else
                             ...plans.asMap().entries.map((entry) {
-                              final indexInEdited = editedChecklist.indexOf(entry.value);
+                              final indexInEdited = editedChecklist.indexOf(
+                                entry.value,
+                              );
                               return _buildChecklistItem(
                                 entry.value,
                                 indexInEdited,
@@ -909,13 +918,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
                     // โรงแรม
                     _buildSectionCard(
-                      title: 'โรงแรม',
+                      title: 'hotel'.tr,
                       icon: Icons.hotel_rounded,
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            'เลือกโรงแรมหลักได้ 1 แห่ง',
+                            'choose1hotel'.tr,
                             style: TextStyle(
                               color: Colors.grey[600],
                               fontWeight: FontWeight.w500,
@@ -925,7 +934,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           Row(
                             children: [
                               Text(
-                                'รายการ: ${hotels.length}',
+                                '${'items'.tr}: ${hotels.length}',
                                 style: TextStyle(
                                   color: Colors.grey[700],
                                   fontWeight: FontWeight.w600,
@@ -934,18 +943,21 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               const Spacer(),
                               if (canEdit && !_aiBusy)
                                 TextButton.icon(
-                                  onPressed: () => addChecklistItem(type: 'hotel'),
+                                  onPressed: () =>
+                                      addChecklistItem(type: 'hotel'.tr),
                                   icon: const Icon(Icons.add_business_rounded),
-                                  label: const Text('เพิ่มโรงแรม'),
+                                  label: Text('addHotel'.tr),
                                 ),
                             ],
                           ),
                           const SizedBox(height: 8),
                           if (hotels.isEmpty)
-                            _emptyBox('ยังไม่มีโรงแรม')
+                            _emptyBox('nohotels'.tr)
                           else
                             ...hotels.asMap().entries.map((entry) {
-                              final indexInEdited = editedChecklist.indexOf(entry.value);
+                              final indexInEdited = editedChecklist.indexOf(
+                                entry.value,
+                              );
                               return _buildChecklistItem(
                                 entry.value,
                                 indexInEdited,
@@ -971,8 +983,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               backgroundColor: Colors.blueAccent,
               foregroundColor: Colors.white,
               icon: const Icon(Icons.save_rounded),
-              label: const Text(
-                'บันทึก',
+              label: Text(
+                'save'.tr,
                 style: TextStyle(fontWeight: FontWeight.w600),
               ),
             )
@@ -987,7 +999,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           IconButton(
-            onPressed: () => Get.back(),
+            onPressed: () => Navigator.pop(context),
             icon: const Icon(
               Icons.arrow_back_ios_new_rounded,
               color: Colors.white,
@@ -1007,9 +1019,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             ),
           ),
           const SizedBox(width: 14),
-          const Expanded(
+          Expanded(
             child: Text(
-              'ปรับแต่งแผนเที่ยว',
+              'adjustPlan'.tr,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1133,6 +1145,42 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     );
   }
 
+  // ==================  ADD IMAGE GALLERY ==================
+
+  Widget _buildImageGallery(List<String> images) {
+    return SizedBox(
+      height: 150,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: images.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          return GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) =>
+                      _FullscreenImagePage(images: images, initialIndex: index),
+                ),
+              );
+            },
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 4 / 3,
+                child: Image.network(
+                  images[index],
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.broken_image),
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   Widget _buildAiAdjustCard(bool canEdit) {
     return Card(
       elevation: 2,
@@ -1157,9 +1205,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'ปรับแผนด้วย AI',
+                    'adjustWithAI'.tr,
                     style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
@@ -1172,8 +1220,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               minLines: 2,
               maxLines: 5,
               decoration: InputDecoration(
-                hintText:
-                    'พิมพ์คำสั่ง เช่น “เพิ่ม ICONSIAM ตอนบ่าย และเลื่อนเยาวราชไปค่ำ”',
+                hintText: 'aiPromptHint'.tr,
                 filled: true,
                 fillColor: (canEdit && !_aiBusy)
                     ? Colors.white
@@ -1198,7 +1245,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                         }
                       : null,
                   icon: const Icon(Icons.lightbulb_outline),
-                  label: const Text('ตัวอย่าง'),
+                  label: Text('example'.tr),
                 ),
                 const Spacer(),
                 ElevatedButton.icon(
@@ -1213,7 +1260,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           ),
                         )
                       : const Icon(Icons.auto_fix_high_rounded),
-                  label: const Text('ปรับด้วย AI'),
+                  label: Text('adjustWithAI'.tr),
                 ),
               ],
             ),
@@ -1261,13 +1308,22 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final String price = (item['price'] ?? '').toString();
     final String notesRaw = (item['notes'] ?? '').toString();
     final String notes = _stripMapLinks(notesRaw);
-    final String mapsUrl = (item['mapsUrl'] ?? '').toString(); // ไม่แสดงเป็นลิงก์แล้ว
+    final String mapsUrl = (item['mapsUrl'] ?? '').toString();
 
     final String itemKey = _hotelKey(index, item);
     final bool locked = !canEdit || _aiBusy;
 
     final prevIndex = _findPrevSameType(index, isHotel);
     final nextIndex = _findNextSameType(index, isHotel);
+
+    // 🔥 ADD IMAGE LIST
+    final List<String> images = [
+      if (item['image'] != null && item['image'].toString().startsWith('http'))
+        item['image'].toString(),
+      ...(item['images'] as List? ?? [])
+          .map((e) => e.toString())
+          .where((u) => u.startsWith('http')),
+    ];
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1311,8 +1367,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               color: Colors.black87,
               fontWeight: FontWeight.w500,
             ),
-            decoration: const InputDecoration(
-              hintText: 'ชื่อสถานที่',
+            decoration: InputDecoration(
+              hintText: 'placeName'.tr,
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
             ),
@@ -1331,7 +1387,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               up: true,
                               isHotel: isHotel,
                             ),
-                      tooltip: 'เลื่อนขึ้น',
+                      tooltip: 'moveUp'.tr,
                     ),
                     IconButton(
                       icon: const Icon(Icons.arrow_downward_rounded, size: 20),
@@ -1342,27 +1398,29 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               up: false,
                               isHotel: isHotel,
                             ),
-                      tooltip: 'เลื่อนลง',
+                      tooltip: 'moveDown'.tr,
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete_outline, color: Colors.red),
                       onPressed: () => removeChecklistItem(index),
-                      tooltip: 'ลบรายการ',
+                      tooltip: 'deleteItem'.tr,
                     ),
                   ],
                 )
               : null,
           children: [
-            // Description (ตัดบรรทัดลิงก์ออกจากที่แสดง)
+            // Description
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: TextFormField(
                 readOnly: locked,
-                initialValue: _stripMapLinks((item['description'] ?? '').toString()),
+                initialValue: _stripMapLinks(
+                  (item['description'] ?? '').toString(),
+                ),
                 style: const TextStyle(color: Colors.black87),
                 maxLines: 3,
                 decoration: InputDecoration(
-                  hintText: "รายละเอียด",
+                  hintText: "detail".tr,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: Colors.grey[300]!),
@@ -1383,7 +1441,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 runSpacing: 12,
                 children: [
                   _smallDateButton(
-                    label: 'เริ่ม',
+                    label: 'start'.tr,
                     date: start,
                     locked: locked,
                     onTap: () async {
@@ -1400,7 +1458,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                     },
                   ),
                   _smallDateButton(
-                    label: 'สิ้นสุด',
+                    label: 'end'.tr,
                     date: end,
                     locked: locked,
                     onTap: () async {
@@ -1418,7 +1476,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                   ),
                   _smallTextField(
                     icon: Icons.access_time_rounded,
-                    hint: 'เวลา (14:30)',
+                    hint: 'timeHint'.tr,
                     initial: time,
                     locked: locked,
                     width: 140,
@@ -1426,7 +1484,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                   ),
                   _smallTextField(
                     icon: Icons.timelapse_rounded,
-                    hint: 'ระยะเวลา (1ชม.)',
+                    hint: 'durationHint'.tr,
                     initial: duration,
                     locked: locked,
                     width: 140,
@@ -1435,7 +1493,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                   if (isHotel)
                     _smallTextField(
                       icon: Icons.attach_money_rounded,
-                      hint: 'ราคา',
+                      hint: 'price'.tr,
                       initial: price,
                       locked: locked,
                       width: 140,
@@ -1444,7 +1502,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                   if (notes.isNotEmpty || isHotel)
                     _smallTextField(
                       icon: Icons.info_outline_rounded,
-                      hint: 'โน้ต',
+                      hint: 'notes'.tr,
                       initial: notes,
                       locked: locked,
                       width: 180,
@@ -1454,7 +1512,14 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               ),
             ),
 
-            // Map buttons & preview (ไม่มีปุ่มลิงก์ Google Maps แล้ว)
+            // 🔥 ADD IMAGE GALLERY
+            if (images.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: _buildImageGallery(images),
+              ),
+
+            // Map buttons
             if ((lat != null && lng != null) || mapsUrl.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
@@ -1470,7 +1535,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           label: (item['title'] ?? '').toString(),
                         ),
                         icon: const Icon(Icons.map_rounded),
-                        label: const Text('เปิดในแผนที่'),
+                        label: Text('openInMap'.tr),
                       ),
                     if (lat != null && lng != null)
                       OutlinedButton.icon(
@@ -1490,7 +1555,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                           );
                         },
                         icon: const Icon(Icons.fullscreen),
-                        label: const Text('แสดงเต็มจอ'),
+                        label: Text('fullscreen'.tr),
                       ),
                   ],
                 ),
@@ -1566,6 +1631,58 @@ class _TaskDetailPageState extends State<TaskDetailPage>
           fillColor: locked ? Colors.grey[100] : Colors.white,
         ),
         onChanged: onChanged,
+      ),
+    );
+  }
+}
+
+// ==================  ADD FULLSCREEN ==================
+
+class _FullscreenImagePage extends StatefulWidget {
+  final List<String> images;
+  final int initialIndex;
+
+  const _FullscreenImagePage({
+    required this.images,
+    required this.initialIndex,
+  });
+
+  @override
+  State<_FullscreenImagePage> createState() => _FullscreenImagePageState();
+}
+
+class _FullscreenImagePageState extends State<_FullscreenImagePage> {
+  late PageController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = PageController(initialPage: widget.initialIndex);
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  }
+
+  @override
+  void dispose() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: PageView.builder(
+          controller: _controller,
+          itemCount: widget.images.length,
+          itemBuilder: (context, index) {
+            return InteractiveViewer(
+              child: Center(child: Image.network(widget.images[index])),
+            );
+          },
+        ),
       ),
     );
   }

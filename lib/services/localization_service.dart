@@ -34,8 +34,24 @@ class LocalizationService extends Translations {
 
       // ===== App Naming =====
       'ai-task-manager': 'AI Trip Planner',
-      'appName': 'ผู้ช่วยวางแผนเที่ยวด้วย AI',
+      'appName': 'AI Trip Planner',
       'appSubtitle': 'ฉลาด ใช้ง่าย วางแผนไว',
+
+      "adjustWithAI": "ปรับแผนด้วย AI",
+      "aiPromptHint": "พิมพ์คำสั่ง เช่น เพิ่มสถานที่ หรือเลื่อนเวลา",
+      "example": "ตัวอย่าง",
+      "placeName": "ชื่อสถานที่",
+      "moveUp": "เลื่อนขึ้น",
+      "moveDown": "เลื่อนลง",
+      "deleteItem": "ลบรายการ",
+      "description": "รายละเอียด",
+      "timeHint": "เวลา (14:30)",
+      "durationHint": "ระยะเวลา",
+      "price": "ราคา",
+      "note": "โน้ต",
+      "openInMap": "เปิดในแผนที่",
+      "fullscreen": "แสดงเต็มจอ",
+      "items": "รายการ",
 
       // ===== Dashboard / Overview (ปรับจากงาน -> ทริป) =====
       'dashboard': 'แดชบอร์ดทริป',
@@ -71,6 +87,7 @@ class LocalizationService extends Translations {
       'taskdetails': 'แก้ไขรายละเอียดแผน',
       'taskname': 'ชื่อรายการ',
       'date': 'ช่วงเวลา',
+      'noAccount': 'ไม่มีบัญชีผู้ใช้?',
 
       // ===== Status (ใช้กับ “รายการ/กิจกรรม”) =====
       'status': 'สถานะ',
@@ -181,6 +198,8 @@ class LocalizationService extends Translations {
       'focusTip': 'ทิปการจัดแผน',
       'considerFewTasks': 'ลองลดจำนวนสถานที่/กิจกรรมในช่วงเวลาเดียวกัน',
 
+      'adjustPlan' : 'ปรับแผนการท่องเที่ยว',    
+
       // ===== Settings =====
       'settings': 'การตั้งค่า',
       'account': 'บัญชีผู้ใช้',
@@ -241,6 +260,64 @@ class LocalizationService extends Translations {
       'travelStyleTitle': 'สไตล์การท่องเที่ยว (เลือกได้หลายแบบ)',
       'travelStyleHint': 'เลือกอย่างน้อย 1 แบบเพื่อให้แผนเที่ยวตรงใจคุณ',
 
+      'permission': 'สิทธิ์การเข้าถึง',
+      'noPermission': 'คุณไม่มีสิทธิ์แก้ไขรายการนี้',
+
+      'owner': 'เจ้าของ',
+      'editor': 'ผู้แก้ไข',
+      'viewer': 'ผู้ดู',
+
+      'location': 'สถานที่',
+      'invite': 'เชิญผู้ร่วมทริป',
+      'edit': 'แก้ไข',
+
+      'tripPlan': 'แผนการเดินทาง',
+      'hotels': 'ที่พัก',
+
+      'noPlans': 'ยังไม่มีแผนการเดินทาง',
+      'noHotels': 'ยังไม่มีที่พัก',
+
+      'nature': 'ธรรมชาติ',
+      'culture': 'วัฒนธรรม',
+      'foodie': 'สายกิน',
+      'adventure': 'ผจญภัย',
+      'relax': 'พักผ่อน',
+      'shopping': 'ช้อปปิ้ง',
+      'nightlife': 'กลางคืน',
+      'photography': 'ถ่ายภาพ',
+      'roadtrip': 'ทริปขับรถ',
+      'family-friendly': 'เหมาะกับครอบครัว',
+      'budget': 'ประหยัด',
+      'luxury': 'หรูหรา',
+
+      'noPermissionDelete': 'คุณไม่มีสิทธิ์ลบรายการนี้',
+      'noPermissionEditTrip': 'คุณไม่มีสิทธิ์แก้ไขทริปนี้',
+      'enterTaskName': 'กรุณากรอกชื่อทริป',
+      'cannotSave': 'ไม่สามารถบันทึกได้',
+
+      'confirmdelete': 'ยืนยันการลบ',
+      'saveSuccess': 'บันทึกแผนเที่ยวแล้ว',
+      'aiAdjustSuccess': 'AI ปรับแผนให้แล้ว',
+      'aiAdjustFailed': 'ปรับแผนไม่สำเร็จ',
+      'aiProcessing': 'กำลังให้ AI ปรับแผน...',
+      'aiStopSave': 'หยุดบันทึก: ให้ AI ปรับไม่สำเร็จ',
+      'aiPromptRequired': 'พิมพ์สิ่งที่อยากให้ AI ปรับก่อน',
+
+      'editTravelPlan': 'ปรับแต่งแผนเที่ยว',
+
+      'tripName': 'ชื่อทริป',
+      'travelDate': 'วันที่เดินทาง',
+      'plansActivities': 'แผน / กิจกรรม',
+
+      'tripNameExample': 'เช่น เที่ยวกรุงเทพ 2 วัน 1 คืน',
+
+      'saveButton': 'บันทึก',
+      'addPlace': 'เพิ่มสถานที่',
+      'addHotel': 'เพิ่มโรงแรม',
+      'aiAdjust': 'ปรับด้วย AI',
+
+      'selectOneHotel': 'เลือกโรงแรมหลักได้ 1 แห่ง',
+
       // ===== Months =====
       'jan': 'ม.ค.',
       'feb': 'ก.พ.',
@@ -268,6 +345,7 @@ class LocalizationService extends Translations {
       'inviteCode': 'โค้ดเชิญ',
       'codeLength': 'โค้ดต้องมี 6 ตัวอักษร',
       'paste': 'วาง',
+      'backToLogin': 'เข้าสู่ระบบ',
 
       // Button
       'joinPlanButton': 'เข้าร่วมแผน',
@@ -283,6 +361,31 @@ class LocalizationService extends Translations {
 
       'joinImmediateTitle': 'เข้าร่วมทันที',
       'joinImmediateDesc': 'เมื่อโค้ดถูกต้อง คุณจะเข้าร่วมแผนได้ทันที',
+
+      'success_title': 'ส่งข้อความสำเร็จ!',
+      'success_message': 'ขอบคุณที่ติดต่อเรา ทีมงานจะตอบกลับคุณโดยเร็วที่สุด',
+      'send_new_message': 'ส่งข้อความใหม่',
+
+      'form_header_title': 'ต้องการความช่วยเหลือ?',
+      'form_header_subtitle':
+          'กรอกแบบฟอร์มด้านล่าง แล้วทีมงานจะติดต่อกลับโดยเร็ว',
+
+      'name': 'ชื่อ-นามสกุล',
+      'name_hint': 'กรอกชื่อ-นามสกุลของคุณ',
+      'please_enter_name': 'กรุณากรอกชื่อ',
+
+      'email_hint': 'กรอกอีเมลของคุณ',
+      'please_enter_email': 'กรุณากรอกอีเมล',
+      'please_enter_valid_email': 'กรุณากรอกอีเมลให้ถูกต้อง',
+
+      'message': 'ข้อความ',
+      'message_hint': 'อธิบายปัญหาหรือคำถามของคุณที่นี่...',
+      'please_enter_message': 'กรุณากรอกข้อความ',
+      'message_too_short': 'ข้อความต้องมีอย่างน้อย 10 ตัวอักษร',
+
+      'send_message': 'ส่งข้อความ',
+      'sending': 'กำลังส่ง...',
+      'send_error': 'ไม่สามารถส่งข้อความได้ กรุณาลองใหม่อีกครั้ง',
 
       // Errors / Snackbar
       'pleaseEnterInviteCode': 'กรุณากรอกโค้ดเชิญ',
@@ -309,6 +412,16 @@ class LocalizationService extends Translations {
       'leavePlanConfirmTitle': 'ออกจากแผนนี้?',
       'leavePlanConfirmDesc': 'คุณจะไม่เห็นแผนนี้ในรายการของคุณอีกต่อไป',
       'confirmLeave': 'ยืนยัน',
+      'view-overview': 'ภาพรวมแผน',
+      'manage-tasks': 'จัดการแผน',
+      'ai-assistant': 'ผู้ช่วย AI',
+      'loginTitle': 'ยินดีต้อนรับ!',
+      'descLogin': 'กรุณาเข้าสู่ระบบเพื่อเริ่มต้นใช้งาน',
+      'registerTitle': 'เข้าร่วมกับเราและเริ่มวางแผนเที่ยวกับ AI!',
+      'fullName': 'ชื่อผู้ใช้',
+      'registerButton': 'สร้างบัญชี',
+      'alreadyHaveAccount': 'มีบัญชีผู้ใช้แล้ว?',
+      'createAccountHeader': 'สร้างบัญชีผู้ใช้',
     },
 
     'en_US': {
@@ -321,11 +434,67 @@ class LocalizationService extends Translations {
       'register': 'Sign up',
       'email': 'Email',
       'password': 'Password',
+      'descLogin': 'Please log in to start using the app',
+      'loginTitle': 'Welcome !',
 
       // ===== App Naming =====
       'ai-task-manager': 'AI Trip Planner',
       'appName': 'AI Trip Planner',
       'appSubtitle': 'Smart. Simple. Fast planning.',
+
+      'noPermissionDelete': 'You do not have permission to delete this item',
+      'noPermissionEditTrip': 'You do not have permission to edit this trip',
+      'enterTaskName': 'Please enter trip name',
+      'cannotSave': 'Cannot save',
+
+      'confirmdelete': 'Confirm Delete',
+      'dialogconfirmdelete': 'Do you want to delete this item?',
+      'deletetask': 'Delete',
+
+      'saveSuccess': 'Travel plan saved',
+      'aiAdjustSuccess': 'AI adjusted the plan',
+      'aiAdjustFailed': 'Failed to adjust plan',
+      'aiProcessing': 'AI is adjusting the plan...',
+      'aiStopSave': 'Stop saving: AI adjustment failed',
+      'aiPromptRequired': 'Please enter AI instruction first',
+
+      'editTravelPlan': 'Edit Travel Plan',
+
+      'tripName': 'Trip Name',
+      'travelDate': 'Travel Date',
+      'plansActivities': 'Plans / Activities',
+      'hotels': 'Hotels',
+
+      'tripNameExample': 'e.g. Bangkok trip 2 days 1 night',
+      'aiPromptHint':
+          'Type command like “Add ICONSIAM in afternoon and move Yaowarat to evening”',
+      'placeName': 'Place Name',
+      'description': 'Description',
+      'timeHint': 'Time (14:30)',
+      'durationHint': 'Duration (1 hr)',
+      'price': 'Price',
+      'note': 'Note',
+
+      'save': 'Save',
+      'saveButton': 'Save',
+      'addPlace': 'Add Place',
+      'addHotel': 'Add Hotel',
+      'example': 'Example',
+      'aiAdjust': 'Adjust with AI',
+      'openInMap': 'Open in Map',
+      'fullscreen': 'Fullscreen',
+      'moveUp': 'Move Up',
+      'moveDown': 'Move Down',
+      'deleteItem': 'Delete',
+
+      'noPlans': 'No plans yet',
+      'noHotels': 'No hotels yet',
+
+      'start': 'Start',
+      'end': 'End',
+
+      'selectOneHotel': 'You can select 1 main hotel',
+      'items': 'Items',
 
       // ===== Dashboard / Analytics =====
       'dashboard': 'Trip Dashboard',
@@ -336,6 +505,9 @@ class LocalizationService extends Translations {
       'tasksbystatus': 'Items by Status',
       'tasksNeedAttention': '@count items need attention',
       'loading': 'Loading...',
+      'view-overview': 'View overview',
+      'manage-tasks': 'Manage plans',
+      'ai-assistant': 'AI Assistant',
 
       // ===== Tabs / Filters =====
       'all': 'All',
@@ -343,6 +515,7 @@ class LocalizationService extends Translations {
       'thisWeek': 'This week',
       'thisMonth': 'This month',
       'allTime': 'All time',
+      'noAccount': 'No account?',
 
       // ===== Plan list =====
       'tasklist': 'Trip Plan',
@@ -361,6 +534,43 @@ class LocalizationService extends Translations {
       'taskdetails': 'Edit plan details',
       'taskname': 'Item title',
       'date': 'Time',
+      'createAccountHeader': 'Create an account',
+      'registerTitle': 'Join us and start planning your trips with AI!',
+      'fullName': 'Username',
+      'registerButton': 'Create account',
+      'alreadyHaveAccount': 'Already have an account?',
+      'backToLogin': 'Back to login',
+
+      'contact_support': 'Contact Support',
+
+      'success_title': 'Message Sent Successfully!',
+      'success_message':
+          'Thank you for contacting us. Our support team will get back to you as soon as possible.',
+      'send_new_message': 'Send New Message',
+
+      'form_header_title': 'Need Help?',
+      'form_header_subtitle':
+          'Fill out the form below and our team will assist you shortly.',
+
+      'name': 'Full Name',
+      'name_hint': 'Enter your full name',
+      'please_enter_name': 'Please enter your name',
+
+      'email_hint': 'Enter your email address',
+      'please_enter_email': 'Please enter your email',
+      'please_enter_valid_email': 'Please enter a valid email address',
+
+      'message': 'Message',
+      'message_hint': 'Describe your issue or question here...',
+      'please_enter_message': 'Please enter your message',
+      'message_too_short': 'Message must be at least 10 characters',
+
+      'send_message': 'Send Message',
+      'sending': 'Sending...',
+      'send_error': 'Failed to send message. Please try again.',
+
+      'form_info_text':
+          'Our support team typically responds within 24 hours. Please check your email for updates.',
 
       // ===== Status =====
       'status': 'Status',
@@ -380,16 +590,13 @@ class LocalizationService extends Translations {
       'urgent': 'Urgent',
 
       // ===== CRUD =====
-      'save': 'Save',
       'savetask': 'Save plan',
       'saving...': 'Saving...',
       'tasksaved': 'Saved successfully',
       'cannotsave': 'Unable to save',
       'cannotSaveTask': 'Unable to save',
-      'deletetask': 'Delete item',
       'delete': 'Delete',
       'comfirmdelete': 'Confirm delete',
-      'dialogconfirmdelete': 'Are you sure you want to delete this item?',
       'confirmchangestatus': 'Confirm status',
       'dialogconfirmstatus': 'Mark this item as Done?',
       'confirmdeletesubtask': 'Delete this sub-item?',
@@ -432,8 +639,6 @@ class LocalizationService extends Translations {
       'mainTaskInfo': 'Main plan info',
       'taskName': 'Trip / Plan name',
       'setMainTaskName': 'Set a trip / main plan name',
-      'start': 'Start',
-      'end': 'End',
       'saveMainTask': 'Save main plan',
       'pleaseEnterText': 'Please enter some text',
       'noSubtasksFound': 'No sub-items could be generated',
@@ -466,6 +671,32 @@ class LocalizationService extends Translations {
       'overdueTasks': 'Late items',
       'focusTip': 'Planning tip',
       'considerFewTasks': 'Consider fewer stops in the same time window.',
+
+      'permission': 'Permission',
+      'noPermission': 'You do not have permission to edit this item',
+
+      'owner': 'Owner',
+      'editor': 'Editor',
+      'viewer': 'Viewer',
+
+      'location': 'Location',
+      'invite': 'Invite',
+      'edit': 'Edit',
+
+      'tripPlan': 'Trip Plan',
+
+      'nature': 'Nature',
+      'culture': 'Culture',
+      'foodie': 'Foodie',
+      'adventure': 'Adventure',
+      'relax': 'Relax',
+      'shopping': 'Shopping',
+      'nightlife': 'Nightlife',
+      'photography': 'Photography',
+      'roadtrip': 'Roadtrip',
+      'family-friendly': 'Family-Friendly',
+      'budget': 'Budget',
+      'luxury': 'Luxury',
 
       // ===== Settings / About =====
       'settings': 'Settings',
@@ -514,13 +745,14 @@ class LocalizationService extends Translations {
       'tip_case': 'Mix uppercase and lowercase',
       'update_password': 'Update password',
 
+      "adjustWithAI": "Adjust with AI",
+      "adjustPlan" : "Adjust plan",
+
+
       // ===== Notifications / Support =====
       'notifications': 'Notifications',
       'notifications_sub': 'Manage app notifications',
-      'contact_support': 'Contact support',
       'contact_support_sub': 'Get help and resolve issues',
-      'form_info_text':
-          'Your feedback helps us improve the app and provide a better experience.',
 
       // ===== Travel style =====
       'travelStyleTitle': 'Travel styles (multi-select)',

@@ -54,7 +54,7 @@ class SettingPage extends StatelessWidget {
                 icon: Icons.logout_rounded,
                 title: "logout".tr,
                 subtitle: "confirm_logout".tr,
-                onTap: () => _showLogoutDialog(),
+                onTap: () => _showLogoutDialog(context),
                 iconColor: Colors.red,
                 iconBg: Colors.red.shade50,
               ),
@@ -110,7 +110,7 @@ class SettingPage extends StatelessWidget {
     );
   }
 
-  void _showLogoutDialog() {
+  void _showLogoutDialog(BuildContext context) {
     Get.dialog(
       AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -124,7 +124,7 @@ class SettingPage extends StatelessWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Get.back(),
+            onPressed: () => Navigator.of(context).pop(),
             child: Text(
               "cancel".tr,
               style: TextStyle(

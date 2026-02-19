@@ -43,7 +43,7 @@ class _TaskViewPageState extends State<TaskViewPage>
   }
 
   Future<void> _openGoogleMap(double lat, double lng, {String? label}) async {
-    final q = Uri.encodeComponent(label ?? 'Location');
+    final q = Uri.encodeComponent(label ?? 'location'.tr);
     final googleUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng($q)');
     
     if (await canLaunchUrl(googleUrl)) {
@@ -119,8 +119,8 @@ class _TaskViewPageState extends State<TaskViewPage>
   Future<void> _navigateToEditPage({required bool canEdit}) async {
     if (!canEdit) {
       Get.snackbar(
-        'Permission',
-        'คุณไม่มีสิทธิ์แก้ไขงานนี้',
+        'permission'.tr,
+        'noPermission'.tr,
         snackPosition: SnackPosition.BOTTOM,
       );
       return;
@@ -230,13 +230,13 @@ class _TaskViewPageState extends State<TaskViewPage>
             title: _buildStatusHeaderBar(
               statusInfo,
               roleBadge: isOwner
-                  ? 'Owner'
-                  : (isEditor ? 'Editor' : (isViewer ? 'Viewer' : '')),
+                  ? 'owner'.tr
+                  : (isEditor ? 'editor'.tr : (isViewer ? 'viewer'.tr : '')),
             ),
             actions: [
               if (canInvite)
                 IconButton(
-                  tooltip: 'เชิญเข้าร่วม',
+                  tooltip: 'invite'.tr,
                   icon: const Icon(Icons.person_add_alt_1_rounded),
                   onPressed: () {
                     showModalBottomSheet(
@@ -280,12 +280,12 @@ class _TaskViewPageState extends State<TaskViewPage>
                       _buildSectionHeader(
                         icon: Icons.route_rounded,
                         color: Colors.blue,
-                        title: 'แผน / กิจกรรม'.tr,
+                        title: 'tripPlan'.tr,
                         trailingCount: plans.length,
                       ),
                       const SizedBox(height: 12),
                       if (plans.isEmpty)
-                        _buildEmptyBox('ไม่มีรายการแผน/กิจกรรม'.tr)
+                        _buildEmptyBox('noPlans'.tr)
                       else
                         ...plans.asMap().entries.map(
                           (e) => _buildPlanItemView(e.value, e.key),
@@ -297,12 +297,12 @@ class _TaskViewPageState extends State<TaskViewPage>
                       _buildSectionHeader(
                         icon: Icons.hotel_rounded,
                         color: Colors.purple,
-                        title: 'โรงแรม'.tr,
+                        title: 'hotels'.tr,
                         trailingCount: hotels.length,
                       ),
                       const SizedBox(height: 12),
                       if (hotels.isEmpty)
-                        _buildEmptyBox('ไม่มีรายการโรงแรม'.tr)
+                        _buildEmptyBox('noHotels'.tr)
                       else
                         ...hotels.asMap().entries.map(
                           (e) => _buildHotelItemView(e.value, e.key),
@@ -667,10 +667,10 @@ class _TaskViewPageState extends State<TaskViewPage>
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(6)),
-                        child: const Row(children: [
+                        child: Row(children: [
                           Icon(Icons.map_rounded, color: Colors.white, size: 14),
                           SizedBox(width: 4),
-                          Text('Open Map', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
+                          Text('openMap'.tr, style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
                         ]),
                       ),
                     ),
@@ -719,7 +719,7 @@ class _TaskViewPageState extends State<TaskViewPage>
               const SizedBox(width: 8),
               const Icon(Icons.bed_rounded, color: Colors.purple, size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text(title.isEmpty ? 'Hotel' : title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
+              Expanded(child: Text(title.isEmpty ? 'hotel'.tr : title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
               if (reserve) _buildReserveBadge(),
             ],
           ),
@@ -764,10 +764,10 @@ class _TaskViewPageState extends State<TaskViewPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(color: Colors.green.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
-      child: const Row(children: [
+      child:  Row(children: [
         Icon(Icons.check_circle, size: 14, color: Colors.green),
         SizedBox(width: 6),
-        Text('Done', style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 11)),
+        Text('done'.tr, style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 11)),
       ]),
     );
   }
@@ -776,10 +776,10 @@ class _TaskViewPageState extends State<TaskViewPage>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF59E0B))),
-      child: const Row(children: [
+      child: Row(children: [
         Icon(Icons.event_available_rounded, size: 14, color: Color(0xFFF59E0B)),
         SizedBox(width: 4),
-        Text('ควรจองล่วงหน้า', style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w700, fontSize: 11)),
+        Text('shouldBookInAdvance'.tr, style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w700, fontSize: 11)),
       ]),
     );
   }
@@ -813,7 +813,7 @@ class _TaskViewPageState extends State<TaskViewPage>
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Get.back(),
+            onPressed: () => Navigator.of(context).pop(),
             icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
           ),
           Container(
@@ -833,8 +833,8 @@ class _TaskViewPageState extends State<TaskViewPage>
               children: [
                 Row(
                   children: [
-                    const Expanded(
-                      child: Text('แผนเที่ยว', maxLines: 1, overflow: TextOverflow.ellipsis,
+                     Expanded(
+                      child: Text('tripPlan'.tr, maxLines: 1, overflow: TextOverflow.ellipsis,
                         style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
                     ),
                     if (roleBadge.isNotEmpty)

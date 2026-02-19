@@ -40,7 +40,7 @@ class ChangePasswordPage extends GetView<AuthController> {
               color: theme.primaryColor,
             ),
           ),
-          onPressed: () => Get.back(),
+          onPressed: () => Navigator.of(context).pop(),
         ),
       ),
       body: SafeArea(

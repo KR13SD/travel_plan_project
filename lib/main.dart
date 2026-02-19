@@ -1,3 +1,4 @@
+import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
 import 'package:ai_task_project_manager/controllers/auth_controller.dart';
 import 'package:ai_task_project_manager/controllers/dashboard_controller.dart';
 import 'package:ai_task_project_manager/pages/add_task_page.dart';
@@ -12,6 +13,7 @@ import 'package:ai_task_project_manager/pages/setting/setting_page.dart';
 import 'package:ai_task_project_manager/pages/task_list_page.dart';
 import 'package:ai_task_project_manager/services/localization_service.dart';
 import 'package:ai_task_project_manager/pages/join_plan_page.dart';
+import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -26,8 +28,6 @@ import 'pages/auth/register_page.dart';
 import 'pages/home_page.dart';
 import 'pages/dashboard_page.dart';
 import 'pages/ai_import_page.dart';
-
-
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,6 +45,7 @@ void main() async {
 
   Get.put(AuthController());
   Get.put(DashboardController());
+  Get.put(AiImportController());
 
   runApp(MyApp(ls: ls));
 }
@@ -55,11 +56,25 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     return Obx(() {
       return GetMaterialApp(
         title: 'AI Task Manager',
         debugShowCheckedModeBanner: false,
+
+        builder: (context, child) {
+          return Material(
+            type: MaterialType.transparency,
+            child: Stack(
+              children: [
+                child!,
+                GetBuilder<AiImportController>(
+                  init: AiImportController(),
+                  builder: (_) => const AiGeneratingOverlay(),
+                ),
+              ],
+            ),
+          );
+        },
 
         translations: ls,
         locale: ls.currentLocale.value,
@@ -86,7 +101,10 @@ class MyApp extends StatelessWidget {
           // Setting
           GetPage(name: '/settings', page: () => SettingPage()),
           GetPage(name: '/profile-detail', page: () => ProfileDetailPage()),
-          GetPage(name: '/change-password', page: () => const ChangePasswordPage()),
+          GetPage(
+            name: '/change-password',
+            page: () => const ChangePasswordPage(),
+          ),
           GetPage(name: '/about-app', page: () => const AboutAppPage()),
           GetPage(name: '/contact-support', page: () => ContactSupportPage()),
           GetPage(name: '/change-language', page: () => LanguagePage()),

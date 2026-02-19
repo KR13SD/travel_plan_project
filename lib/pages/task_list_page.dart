@@ -246,7 +246,7 @@ class _TaskListPageState extends State<TaskListPage>
         child: Row(
           children: [
             IconButton(
-              onPressed: () => Get.back(),
+              onPressed: () => Navigator.of(context).pop(),
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,
                 color: Colors.white,
@@ -813,14 +813,14 @@ class _TaskListPageState extends State<TaskListPage>
       children: [
         if (canEdit && !isDone) ...[
           _buildGradientActionButton(
-            icon: Icons.play_arrow_rounded,
+            icon: Icons.rocket_launch_rounded,
             gradient: const [Color(0xFFfdcb6e), Color(0xFFe17055)],
             onPressed: () => _confirmUpdateStatus(task),
             tooltip: 'starttask'.tr,
           ),
           const SizedBox(width: 10),
           _buildGradientActionButton(
-            icon: Icons.check_rounded,
+            icon: Icons.task_alt_rounded,
             gradient: const [Color(0xFF00b894), Color(0xFF00cec9)],
             onPressed: () => _confirmMarkDone(task),
             tooltip: 'endtask'.tr,
@@ -829,7 +829,7 @@ class _TaskListPageState extends State<TaskListPage>
         ],
         if (canDelete)
           _buildGradientActionButton(
-            icon: Icons.delete_outline_rounded,
+            icon: Icons.delete_forever_rounded,
             gradient: const [Color(0xFFe17055), Color(0xFFd63031)],
             onPressed: () => _confirmDelete(task),
             tooltip: 'deletetask'.tr,
@@ -837,7 +837,7 @@ class _TaskListPageState extends State<TaskListPage>
         if (canLeave) ...[
           const SizedBox(width: 10),
           _buildGradientActionButton(
-            icon: Icons.logout_rounded,
+            icon: Icons.exit_to_app_rounded,
             gradient: const [Color(0xFF94A3B8), Color(0xFF64748B)],
             onPressed: () => _confirmLeavePlan(task),
             tooltip: 'ออกจากแผน (ซ่อนเฉพาะของฉัน)'.tr,
@@ -872,12 +872,12 @@ class _TaskListPageState extends State<TaskListPage>
           child: InkWell(
             borderRadius: BorderRadius.circular(12),
             onTap: onPressed,
-            child: const Padding(
-              padding: EdgeInsets.all(10),
+            child: Padding(
+              padding: const EdgeInsets.all(10),
               child: Icon(
-                Icons.circle, // will be replaced by IconTheme below
-                color: Colors.transparent,
-                size: 0,
+                icon, 
+                color: Colors.white, 
+                size: 20, 
               ),
             ),
           ),

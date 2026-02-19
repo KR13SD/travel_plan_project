@@ -39,6 +39,7 @@ class AiImportController extends GetxController {
     if (isGenerating.value) return;
 
     isGenerating.value = true;
+    update();
     errorMessage.value = '';
 
     try {
@@ -52,11 +53,13 @@ class AiImportController extends GetxController {
         result.task.checklist.map(_ensureTaskSchema).toList(),
       );
       hasResultReady.value = true;
+      update();
     } catch (e) {
       errorMessage.value = e.toString();
       Get.snackbar('AI Error', errorMessage.value);
     } finally {
       isGenerating.value = false;
+      update();
     }
   }
 

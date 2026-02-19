@@ -92,7 +92,7 @@ class LoginPage extends StatelessWidget {
                   onTap: () {
                     final code = "${l.languageCode}_${l.countryCode}";
                     ls.changeLocale(code);
-                    Get.back();
+                    Navigator.of(context).pop();
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('languageChanged'.tr.replaceAll('{lang}', name)),
@@ -241,7 +241,7 @@ class LoginPage extends StatelessWidget {
                             const SizedBox(height: 8),
                             
                             Text(
-                              'กรุณาเข้าสู่ระบบเพื่อเริ่มต้นใช้งาน',
+                              'descLogin'.tr,
                               textAlign: TextAlign.center,
                               style: GoogleFonts.kanit(
                                 fontSize: 16,

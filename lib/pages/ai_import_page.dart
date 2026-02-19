@@ -40,7 +40,7 @@ class _AiImportPageState extends State<AiImportPage>
   final ScrollController _scrollCtrl = ScrollController();
   bool _showScrollToTop = false;
 
-  // เก็บ index รูปที่เลือกต่อการ์ด 
+  // เก็บ index รูปที่เลือกต่อการ์ด
   final Map<String, int> _selectedImageIndex = {}; // "plan-0" / "hotel-2"
 
   final DateFormat dateFormatter = DateFormat('dd/MM/yyyy');
@@ -88,6 +88,7 @@ class _AiImportPageState extends State<AiImportPage>
     _mainTaskController.dispose();
     _scrollCtrl.dispose();
     aiCtrl.isOnAiImportPage.value = false;
+    aiCtrl.isGenerating.value = false;
     super.dispose();
   }
 
@@ -236,7 +237,7 @@ class _AiImportPageState extends State<AiImportPage>
       await taskController.addTask(mainTask);
 
       if (!mounted) return;
-      Get.back(); // กลับไป TaskList
+      Navigator.of(context).pop(); // กลับไป TaskList
 
       _showSnackbar(
         'savedMainTaskWithNSubtasks'.trParams({
@@ -343,32 +344,6 @@ class _AiImportPageState extends State<AiImportPage>
   String formatDuration(String? durationStr) {
     if (durationStr == null || durationStr.isEmpty) return '';
     return durationStr;
-  }
-
-  Color getPriorityColor(String? priority) {
-    switch (priority?.toLowerCase()) {
-      case 'high':
-        return const Color(0xFFEF4444); // red-500
-      case 'medium':
-        return const Color(0xFFF59E0B); // amber-500
-      case 'low':
-        return const Color(0xFF10B981); // emerald-500
-      default:
-        return const Color(0xFF6B7280); // gray-500
-    }
-  }
-
-  IconData getPriorityIcon(String? priority) {
-    switch (priority?.toLowerCase()) {
-      case 'high':
-        return Icons.priority_high_rounded;
-      case 'medium':
-        return Icons.remove_rounded;
-      case 'low':
-        return Icons.keyboard_arrow_down_rounded;
-      default:
-        return Icons.remove_rounded;
-    }
   }
 
   // ===== Better Image UI (Hero + Thumbnails) =====
@@ -822,8 +797,6 @@ class _AiImportPageState extends State<AiImportPage>
                 bottom: (aiCtrl.previewTasks.isNotEmpty ? 100 : 24),
                 child: SafeArea(top: false, child: _buildScrollToTopButton()),
               ),
-            if (aiCtrl.isGenerating.value && !aiCtrl.isOnAiImportPage.value)
-              const AiGeneratingOverlay(),
           ],
         ),
       ),
@@ -838,7 +811,11 @@ class _AiImportPageState extends State<AiImportPage>
         child: Row(
           children: [
             IconButton(
-              onPressed: () => Get.back(),
+              onPressed: () {
+                print('=== BACK PRESSED ===');
+                print('Can pop: ${Navigator.of(context).canPop()}');
+                Navigator.of(context).pop();
+              },
               icon: const Icon(
                 Icons.arrow_back_ios_new_rounded,
                 color: Colors.white,
@@ -1309,11 +1286,6 @@ class _AiImportPageState extends State<AiImportPage>
     return null;
   }
 
-  String safePriority(dynamic v) {
-    final p = (v ?? 'medium').toString().toLowerCase();
-    return ['high', 'medium', 'low'].contains(p) ? p : 'medium';
-  }
-
   Widget _buildEnhancedTaskCard(
     Map<String, dynamic> task,
     int index,
@@ -1326,7 +1298,6 @@ class _AiImportPageState extends State<AiImportPage>
     final DateTime? startDate = safeDate(task['start_date']);
     final double? lat = safeDouble(task['lat']);
     final double? lng = safeDouble(task['lng']);
-    final String priority = safePriority(task['priority']);
 
     final String? image = task['image']?.toString();
     final List<String> images = (task['images'] as List? ?? const [])
@@ -1407,34 +1378,6 @@ class _AiImportPageState extends State<AiImportPage>
                   ),
                 ),
                 const SizedBox(width: 10),
-
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: BoxDecoration(
-                    color: getPriorityColor(priority).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(
-                      color: getPriorityColor(priority).withOpacity(0.3),
-                    ),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: priority,
-                      items: const [
-                        DropdownMenuItem(value: 'high', child: Text('HIGH')),
-                        DropdownMenuItem(
-                          value: 'medium',
-                          child: Text('MEDIUM'),
-                        ),
-                        DropdownMenuItem(value: 'low', child: Text('LOW')),
-                      ],
-                      onChanged: (val) => setState(
-                        () => aiCtrl.previewTasks[index]['priority'] =
-                            val ?? 'medium',
-                      ),
-                    ),
-                  ),
-                ),
 
                 const Spacer(),
 
@@ -1690,7 +1633,7 @@ class _AiImportPageState extends State<AiImportPage>
     );
   }
 
-  // ปุ่ม SAVE 
+  // ปุ่ม SAVE
   Widget _buildBottomSaveBar() {
     if (aiCtrl.previewTasks.isEmpty) return const SizedBox.shrink();
 

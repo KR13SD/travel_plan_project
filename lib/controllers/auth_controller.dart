@@ -27,11 +27,20 @@ class AuthController extends GetxController {
   final ageController = TextEditingController();
   final RxSet<String> selectedTravelStyles = <String>{}.obs;
 
-  // Options for travel styles (คุณอาจโยง i18n key กับ .tr ได้)
-  final List<String> travelStyles = const [
-    'Nature', 'Culture', 'Foodie', 'Adventure', 'Relax',
-    'Shopping', 'Nightlife', 'Photography', 'Roadtrip',
-    'Family-Friendly', 'Budget', 'Luxury'
+  // Options for travel styles
+  final List<String> travelStyles = [
+    'nature'.tr,
+    'culture'.tr,
+    'foodie'.tr,
+    'adventure'.tr,
+    'relax'.tr,
+    'shopping'.tr,
+    'nightlife'.tr,
+    'photography'.tr,
+    'roadtrip'.tr,
+    'family-friendly'.tr,
+    'budget'.tr,
+    'luxury'.tr,
   ];
 
   // ====== Login fields ======
@@ -123,8 +132,10 @@ class AuthController extends GetxController {
       Get.snackbar('สำเร็จ', 'เปลี่ยนรหัสผ่านเรียบร้อยแล้ว');
     } on FirebaseAuthException catch (e) {
       String message = 'เกิดข้อผิดพลาด';
-      if (e.code == 'wrong-password') message = 'รหัสผ่านปัจจุบันไม่ถูกต้อง';
-      else if (e.code == 'weak-password') message = 'รหัสผ่านใหม่อ่อนแอเกินไป';
+      if (e.code == 'wrong-password')
+        message = 'รหัสผ่านปัจจุบันไม่ถูกต้อง';
+      else if (e.code == 'weak-password')
+        message = 'รหัสผ่านใหม่อ่อนแอเกินไป';
       Get.snackbar('เกิดข้อผิดพลาด', message);
     } catch (e) {
       Get.snackbar('Error', e.toString());
@@ -140,7 +151,9 @@ class AuthController extends GetxController {
     final uid = currentUser?.uid;
     if (uid == null) return;
 
-    FirebaseFirestore.instance.collection('users').doc(uid).snapshots().listen((doc) {
+    FirebaseFirestore.instance.collection('users').doc(uid).snapshots().listen((
+      doc,
+    ) {
       if (!doc.exists) return;
       final data = doc.data()!;
       name.value = data['name'] ?? '';
@@ -210,7 +223,10 @@ class AuthController extends GetxController {
     final ageText = ageController.text.trim();
 
     if (fullName.isEmpty || email.isEmpty || password.length < 6) {
-      Get.snackbar('Error', 'กรุณากรอกข้อมูลให้ครบ ถูกต้อง (รหัสผ่านอย่างน้อย 6 ตัว)');
+      Get.snackbar(
+        'Error',
+        'กรุณากรอกข้อมูลให้ครบ ถูกต้อง (รหัสผ่านอย่างน้อย 6 ตัว)',
+      );
       return;
     }
     // age optional แต่ต้องเป็นตัวเลขถ้ากรอก
@@ -219,7 +235,10 @@ class AuthController extends GetxController {
       return;
     }
     if (selectedTravelStyles.isEmpty) {
-      Get.snackbar('Select at least 1 style', 'เลือกสไตล์การท่องเที่ยวอย่างน้อย 1 แบบ');
+      Get.snackbar(
+        'Select at least 1 style',
+        'เลือกสไตล์การท่องเที่ยวอย่างน้อย 1 แบบ',
+      );
       return;
     }
 

@@ -23,7 +23,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   final AuthController authController = Get.find<AuthController>();
   final DashboardController dashboardController =
       Get.find<DashboardController>();
-  final AiImportController aiImportController = Get.put(AiImportController());
+  final AiImportController aiImportController = Get.find<AiImportController>();
 
   late AnimationController _fadeController;
   late AnimationController _slideController;
@@ -129,15 +129,6 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               );
             },
           ),
-          const Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: SafeArea(
-              minimum: EdgeInsets.only(bottom: 16),
-              child: AiGeneratingOverlay(),
-            ),
-          ),
         ],
       ),
     );
@@ -177,7 +168,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         ),
       ),
       actions: [
-        _buildNotificationIcon(),
+        // _buildNotificationIcon(),
         _buildIconButton(Icons.settings_outlined, '/settings'),
         _buildLogoutButton(),
       ],
@@ -386,79 +377,106 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       },
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: menus.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: 20,
-        crossAxisSpacing: 20,
-        childAspectRatio: 1.0, // ✅ เปลี่ยนจาก 1.1 เป็น 1.0 ให้สูงขึ้น
-      ),
-      itemBuilder: (context, index) {
-        final menu = menus[index];
-        return GestureDetector(
-          onTap: () {
-            HapticFeedback.lightImpact();
-            Get.toNamed(menu['route']);
-          },
-          child: AnimatedContainer(
-            duration: Duration(milliseconds: 250 + index * 50),
-            curve: Curves.easeOutCubic,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: menu['gradient'],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: menu['color'].withOpacity(0.25),
-                  blurRadius: 12,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(16), // ✅ ลด padding จาก 20 เป็น 16
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center, // ✅ จัดกลาง
-              children: [
-                Icon(menu['icon'], size: 36, color: Colors.white),
-                const SizedBox(height: 10), // ✅ ลดจาก 12 เป็น 10
-                // ✅ ใช้ AutoSizeText สำหรับ title
-                AutoSizeText(
-                  menu['title'],
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  minFontSize: 12,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4), // ✅ ลดจาก 6 เป็น 4
-                // ✅ ใช้ AutoSizeText สำหรับ description
-                AutoSizeText(
-                  menu['description'],
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
-                    fontSize: 12,
-                  ),
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  minFontSize: 10,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
+    return Column(
+      children: [
+        /// 🔹 Row แรก (2 ช่อง)
+        GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: 2,
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: 20,
+            crossAxisSpacing: 20,
+            childAspectRatio: 1.0,
           ),
-        );
+          itemBuilder: (context, index) {
+            return _buildMenuItem(menus[index], index);
+          },
+        ),
+
+        const SizedBox(height: 20),
+
+        /// 🔹 AI Import เต็มแถว
+        _buildMenuItem(menus[2], 2, fullWidth: true),
+      ],
+    );
+  }
+
+  Widget _buildMenuItem(
+    Map<String, dynamic> menu,
+    int index, {
+    bool fullWidth = false,
+  }) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.lightImpact();
+        Get.toNamed(menu['route']);
       },
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 250 + index * 50),
+        curve: Curves.easeOutCubic,
+        width: fullWidth ? double.infinity : null,
+        height: fullWidth ? 140 : null,
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: menu['gradient'],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: [
+            BoxShadow(
+              color: menu['color'].withOpacity(0.25),
+              blurRadius: 12,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          mainAxisAlignment: fullWidth
+              ? MainAxisAlignment.start
+              : MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(menu['icon'], size: 40, color: Colors.white),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: fullWidth
+                    ? CrossAxisAlignment.start
+                    : CrossAxisAlignment.center,
+                children: [
+                  AutoSizeText(
+                    menu['title'],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    maxLines: 2,
+                    minFontSize: 12,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 6),
+                  AutoSizeText(
+                    menu['description'],
+                    style: TextStyle(
+                      color: Colors.white.withOpacity(0.9),
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    minFontSize: 10,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -509,7 +527,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => Get.back(),
+                      onPressed: () => Navigator.of(context).pop(),
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
@@ -531,7 +549,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        Get.back();
+                        Navigator.of(context).pop() ;
                         authController.signOut();
                       },
                       style: ElevatedButton.styleFrom(
