@@ -1,5 +1,6 @@
 // lib/pages/task_list_page.dart
 import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
+import 'package:ai_task_project_manager/pages/ai_import_page.dart';
 import 'package:ai_task_project_manager/pages/task_view_page.dart';
 import 'package:ai_task_project_manager/services/localization_service.dart';
 import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
@@ -229,8 +230,8 @@ class _TaskListPageState extends State<TaskListPage>
         return Padding(
           padding: EdgeInsets.only(
             bottom: aiCtrl.isGenerating.value || aiCtrl.hasResultReady.value
-                ? 80 // ⬆️ ดัน FAB ขึ้น เมื่อมี AI process
-                : 0, // ⬇️ ปกติ
+                ? 80 // 
+                : 0, // 
           ),
           child: _buildModernFAB(),
         );
@@ -874,11 +875,7 @@ class _TaskListPageState extends State<TaskListPage>
             onTap: onPressed,
             child: Padding(
               padding: const EdgeInsets.all(10),
-              child: Icon(
-                icon, 
-                color: Colors.white, 
-                size: 20, 
-              ),
+              child: Icon(icon, color: Colors.white, size: 20),
             ),
           ),
         ),
@@ -942,33 +939,67 @@ class _TaskListPageState extends State<TaskListPage>
   }
 
   Widget _buildModernFAB() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: kPrimary2.withOpacity(0.25)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // ปุ่ม AI Import (บน)
+        Container(
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              colors: [Color(0xFF8B5CF6), Color(0xFF7C3AED)],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
           ),
-        ],
-      ),
-      child: FloatingActionButton.extended(
-        heroTag: 'fab_join_plan',
-        onPressed: () async {
-          await Get.to(() => const JoinPlanPage());
-        },
-        backgroundColor: Colors.white,
-        foregroundColor: kPrimary2,
-        elevation: 0,
-        icon: const Icon(Icons.group_add_rounded),
-        label: Text(
-          'joinWithCode'.tr,
-          style: TextStyle(fontWeight: FontWeight.w600),
+          child: FloatingActionButton.extended(
+            heroTag: 'fab_ai_import',
+            onPressed: () => Get.to(() => const AiImportPage()),
+            backgroundColor: Colors.transparent,
+            foregroundColor: Colors.white,
+            elevation: 0,
+            icon: const Icon(Icons.auto_awesome_rounded),
+            label: const Text(
+              'AI Import',
+              style: TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        // ปุ่ม Join (ล่าง)
+        Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: kPrimary2.withOpacity(0.25)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.08),
+                blurRadius: 10,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: FloatingActionButton.extended(
+            heroTag: 'fab_join_plan',
+            onPressed: () async => await Get.to(() => const JoinPlanPage()),
+            backgroundColor: Colors.white,
+            foregroundColor: kPrimary2,
+            elevation: 0,
+            icon: const Icon(Icons.group_add_rounded),
+            label: Text(
+              'joinWithCode'.tr,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+        ),
+      ],
     );
   }
 

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:ai_task_project_manager/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
@@ -35,7 +36,7 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
     super.initState();
     _nameController = TextEditingController(text: authController.name.value);
     selectedAvatar = authController.photoURL.value;
-    
+
     _animationController = AnimationController(
       duration: const Duration(milliseconds: 800),
       vsync: this,
@@ -43,7 +44,7 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
     );
-    
+
     _animationController.forward();
   }
 
@@ -85,33 +86,26 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
       String? photo;
       if (_profileImage != null) {
         photo = await authController.uploadProfileImage(_profileImage!);
+        print('=== uploaded URL: $photo');
       } else {
         photo = selectedAvatar;
       }
-
+      print('=== saving with photo: $photo');
       await authController.updateProfile(newName: name, newPhotoURL: photo);
-      Get.snackbar(
-        "Success",
-        "updateprofile".tr,
-        backgroundColor: Colors.green.shade100,
-        colorText: Colors.green.shade800,
-        snackPosition: SnackPosition.TOP,
-        borderRadius: 12,
-        margin: const EdgeInsets.all(16),
-      );
+      print('=== saved!');
+      _showSuccessDialog();
     } catch (e) {
-      Get.snackbar(
-        "Error",
-        e.toString(),
-        backgroundColor: Colors.red.shade100,
-        colorText: Colors.red.shade800,
-        snackPosition: SnackPosition.TOP,
-        borderRadius: 12,
-        margin: const EdgeInsets.all(16),
-      );
+      _showErrorDialog(e.toString());
     } finally {
       setState(() => _isSaving = false);
     }
+  }
+
+  ImageProvider _getImageProvider(String url) {
+    if (url.startsWith('data:image')) {
+      return MemoryImage(base64Decode(url.split(',')[1]));
+    }
+    return NetworkImage(url);
   }
 
   @override
@@ -122,11 +116,7 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
           gradient: LinearGradient(
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFF667eea),
-              Color(0xFF764ba2),
-              Color(0xFF6B73FF),
-            ],
+            colors: [Color(0xFF667eea), Color(0xFF764ba2), Color(0xFF6B73FF)],
             stops: [0.0, 0.5, 1.0],
           ),
         ),
@@ -144,8 +134,10 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: IconButton(
-                        icon: const Icon(Icons.arrow_back_ios_new, 
-                               color: Colors.white),
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new,
+                          color: Colors.white,
+                        ),
                         onPressed: () => Navigator.pop(context),
                       ),
                     ),
@@ -161,7 +153,7 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
                   ],
                 ),
               ),
-              
+
               // Content
               Expanded(
                 child: Container(
@@ -180,25 +172,25 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
                       child: Column(
                         children: [
                           const SizedBox(height: 20),
-                          
+
                           // Profile Image Section
                           _buildProfileImageSection(),
-                          
+
                           const SizedBox(height: 40),
-                          
+
                           // Name Input Field
                           _buildNameInputField(),
-                          
+
                           const SizedBox(height: 40),
-                          
+
                           // Avatar Selection
                           _buildAvatarSection(),
-                          
+
                           const SizedBox(height: 50),
-                          
+
                           // Save Button
                           _buildSaveButton(),
-                          
+
                           const SizedBox(height: 20),
                         ],
                       ),
@@ -238,19 +230,21 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
           // Profile Image
           Container(
             margin: const EdgeInsets.all(4),
-            child: Obx(() => CircleAvatar(
-                  radius: 66,
-                  backgroundColor: Colors.white,
-                  child: CircleAvatar(
-                    radius: 62,
-                    backgroundImage: _profileImage != null
-                        ? FileImage(_profileImage!)
-                        : (authController.photoURL.value.isNotEmpty
-                            ? NetworkImage(authController.photoURL.value)
-                            : const AssetImage("assets/default_avatar.png")
-                                as ImageProvider),
-                  ),
-                )),
+            child: Obx(
+              () => CircleAvatar(
+                radius: 66,
+                backgroundColor: Colors.white,
+                child: CircleAvatar(
+                  radius: 62,
+                  backgroundImage: _profileImage != null
+                      ? FileImage(_profileImage!)
+                      : authController.photoURL.value.isNotEmpty
+                      ? _getImageProvider(authController.photoURL.value) // ✅
+                      : const AssetImage("assets/default_avatar.png")
+                            as ImageProvider,
+                ),
+              ),
+            ),
           ),
           // Camera Button
           Positioned(
@@ -271,8 +265,11 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
                 ],
               ),
               child: IconButton(
-                icon: const Icon(Icons.camera_alt, 
-                       color: Colors.white, size: 20),
+                icon: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 20,
+                ),
                 onPressed: _pickImage,
               ),
             ),
@@ -376,8 +373,8 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isSelected 
-                          ? const Color(0xFF667eea) 
+                      color: isSelected
+                          ? const Color(0xFF667eea)
                           : Colors.transparent,
                       width: 3,
                     ),
@@ -462,6 +459,174 @@ class _ProfileDetailPageState extends State<ProfileDetailPage>
           ),
         ),
       ),
+    );
+  }
+
+  void _showSuccessDialog() {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // ✅ Animated checkmark
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.elasticOut,
+                builder: (_, value, __) => Transform.scale(
+                  scale: value,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF667eea).withOpacity(0.4),
+                          blurRadius: 20,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.check_rounded,
+                      color: Colors.white,
+                      size: 44,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'updateprofile'.tr,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () {
+                    Get.back();
+                    Get.offAllNamed('/home');
+                  },
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: const Color(0xFF667eea),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'confirm'.tr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: true,
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    Get.dialog(
+      Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: const Duration(milliseconds: 600),
+                curve: Curves.elasticOut,
+                builder: (_, value, __) => Transform.scale(
+                  scale: value,
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFFe17055), Color(0xFFd63031)],
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFe17055).withOpacity(0.4),
+                          blurRadius: 20,
+                          spreadRadius: 4,
+                        ),
+                      ],
+                    ),
+                    child: const Icon(
+                      Icons.close_rounded,
+                      color: Colors.white,
+                      size: 44,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'error'.tr,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF1E293B),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 28),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Get.back(),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    backgroundColor: const Color(0xFFe17055),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'confirm'.tr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      barrierDismissible: true,
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:ai_task_project_manager/controllers/ai_import_controller.dart';
 import 'package:ai_task_project_manager/widget/ai_generating_overlay.dart';
 import 'package:auto_size_text/auto_size_text.dart';
@@ -118,7 +120,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                           delegate: SliverChildListDelegate([
                             const SizedBox(height: 32),
                             _buildWelcomeCard(name, email),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 80),
                             _buildMenuGrid(),
                           ]),
                         ),
@@ -274,6 +276,13 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
     );
   }
 
+  ImageProvider _getImageProvider(String url) {
+    if (url.startsWith('data:image')) {
+      return MemoryImage(base64Decode(url.split(',')[1]));
+    }
+    return NetworkImage(url);
+  }
+
   // 🔹 Welcome Card
   Widget _buildWelcomeCard(String name, String email) {
     return Container(
@@ -301,7 +310,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
               () => CircleAvatar(
                 radius: 40,
                 backgroundImage: authController.photoURL.value.isNotEmpty
-                    ? NetworkImage(authController.photoURL.value)
+                    ? _getImageProvider(authController.photoURL.value) // 
                     : const AssetImage("assets/default_avatar.png")
                           as ImageProvider,
               ),
@@ -351,14 +360,14 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   // 🔹 Menu Grid - FIXED VERSION
   Widget _buildMenuGrid() {
     final List<Map<String, dynamic>> menus = [
-      {
-        'icon': Icons.dashboard_rounded,
-        'title': 'dashboard'.tr,
-        'route': '/dashboard',
-        'color': const Color(0xFF06B6D4),
-        'description': 'view-overview'.tr,
-        'gradient': [const Color(0xFF06B6D4), const Color(0xFF0891B2)],
-      },
+      // {
+      //   'icon': Icons.dashboard_rounded,
+      //   'title': 'dashboard'.tr,
+      //   'route': '/dashboard',
+      //   'color': const Color(0xFF06B6D4),
+      //   'description': 'view-overview'.tr,
+      //   'gradient': [const Color(0xFF06B6D4), const Color(0xFF0891B2)],
+      // },
       {
         'icon': Icons.assignment_outlined,
         'title': 'tasklist'.tr,
@@ -372,7 +381,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         'title': 'ai-import'.tr,
         'route': '/ai-import',
         'color': const Color(0xFF8B5CF6),
-        'description': 'ai-assistance'.tr,
+        'description': 'ai-assistant'.tr,
         'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
       },
     ];
@@ -383,22 +392,16 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          itemCount: 2,
+          itemCount: menus.length,
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: 20,
-            crossAxisSpacing: 20,
-            childAspectRatio: 1.0,
+            crossAxisCount: 1,
+            mainAxisSpacing: 60,
+            childAspectRatio: 3.5,
           ),
           itemBuilder: (context, index) {
             return _buildMenuItem(menus[index], index);
           },
         ),
-
-        const SizedBox(height: 20),
-
-        /// 🔹 AI Import เต็มแถว
-        _buildMenuItem(menus[2], 2, fullWidth: true),
       ],
     );
   }
@@ -549,7 +552,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
                   Expanded(
                     child: ElevatedButton(
                       onPressed: () {
-                        Navigator.of(context).pop() ;
+                        Navigator.of(context).pop();
                         authController.signOut();
                       },
                       style: ElevatedButton.styleFrom(

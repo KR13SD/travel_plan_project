@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance; 
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   User? get currentUser => _auth.currentUser;
 
@@ -16,22 +16,27 @@ class AuthService {
     final user = _auth.currentUser;
     if (user == null) return;
 
-    // อัปเดต Firebase Auth
+    // อัปเดต Firebase Auth เฉพาะชื่อ (ไม่ update photoURL เพราะ base64 ยาวเกิน)
     await user.updateDisplayName(name);
-    if (photoURL != null) {
-      await user.updatePhotoURL(photoURL);
-    }
-    await user.reload(); // รีเฟรช user info
+    await user.reload();
 
-    // อัปเดต Firestore
+    // เก็บทุกอย่างลง Firestore
     await _db.collection('users').doc(uid).set({
-     'displayName': name,
+      'name': name,
       if (photoURL != null) 'photoURL': photoURL,
     }, SetOptions(merge: true));
-  } 
+  }
 
-  Future<UserCredential> registerWithEmail(String email, String password, String name, {String language = 'en_US'}) async {
-    final cred = await _auth.createUserWithEmailAndPassword(email: email, password: password);
+  Future<UserCredential> registerWithEmail(
+    String email,
+    String password,
+    String name, {
+    String language = 'en_US',
+  }) async {
+    final cred = await _auth.createUserWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
     // เก็บข้อมูลเพิ่มเติมใน Firestore
     await _db.collection('users').doc(cred.user!.uid).set({
       'name': name,
@@ -43,11 +48,13 @@ class AuthService {
   }
 
   Future<UserCredential> loginWithEmail(String email, String password) async {
-    return await _auth.signInWithEmailAndPassword(email: email, password: password);
+    return await _auth.signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
   }
 
   Future<void> signOut() async {
     await _auth.signOut();
   }
-
-}    
+}

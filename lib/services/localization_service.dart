@@ -133,6 +133,7 @@ class LocalizationService extends Translations {
       'insertname': 'ใส่ชื่อรายการ...',
       'noTaskName': 'ไม่มีชื่อรายการ',
       'noDetails': 'ไม่มีรายละเอียด',
+      'openMap': 'เปิดแผนที่',
 
       // ===== Subtasks -> Stops/Activities =====
       'subtasks': 'รายการย่อย',
@@ -198,7 +199,7 @@ class LocalizationService extends Translations {
       'focusTip': 'ทิปการจัดแผน',
       'considerFewTasks': 'ลองลดจำนวนสถานที่/กิจกรรมในช่วงเวลาเดียวกัน',
 
-      'adjustPlan' : 'ปรับแผนการท่องเที่ยว',    
+      'adjustPlan': 'ปรับแผนการท่องเที่ยว',
 
       // ===== Settings =====
       'settings': 'การตั้งค่า',
@@ -316,6 +317,8 @@ class LocalizationService extends Translations {
       'addHotel': 'เพิ่มโรงแรม',
       'aiAdjust': 'ปรับด้วย AI',
 
+      'shouldBookInAdvance': 'แนะนำให้จองล่วงหน้า',
+
       'selectOneHotel': 'เลือกโรงแรมหลักได้ 1 แห่ง',
 
       // ===== Months =====
@@ -414,7 +417,7 @@ class LocalizationService extends Translations {
       'confirmLeave': 'ยืนยัน',
       'view-overview': 'ภาพรวมแผน',
       'manage-tasks': 'จัดการแผน',
-      'ai-assistant': 'ผู้ช่วย AI',
+      'ai-assistant': 'Ai Assistant',
       'loginTitle': 'ยินดีต้อนรับ!',
       'descLogin': 'กรุณาเข้าสู่ระบบเพื่อเริ่มต้นใช้งาน',
       'registerTitle': 'เข้าร่วมกับเราและเริ่มวางแผนเที่ยวกับ AI!',
@@ -422,6 +425,10 @@ class LocalizationService extends Translations {
       'registerButton': 'สร้างบัญชี',
       'alreadyHaveAccount': 'มีบัญชีผู้ใช้แล้ว?',
       'createAccountHeader': 'สร้างบัญชีผู้ใช้',
+
+      "enterName": "กรอกชื่อของคุณ",
+      "pleaseinsertname": "กรุณากรอกชื่อ",
+      "updateprofile": "อัปเดตโปรไฟล์สำเร็จ",
     },
 
     'en_US': {
@@ -437,10 +444,20 @@ class LocalizationService extends Translations {
       'descLogin': 'Please log in to start using the app',
       'loginTitle': 'Welcome !',
 
+      'shouldBookInAdvance': 'Should book in advance.',
+
       // ===== App Naming =====
       'ai-task-manager': 'AI Trip Planner',
       'appName': 'AI Trip Planner',
       'appSubtitle': 'Smart. Simple. Fast planning.',
+
+      "profiledetails": "Profile Details",
+      "displayname": "Display Name",
+      "enterName": "Enter your name",
+      "chooseAvatar": "Choose Avatar",
+      "save": "Save",
+      "pleaseinsertname": "Please insert your name",
+      "updateprofile": "Profile updated successfully",
 
       'noPermissionDelete': 'You do not have permission to delete this item',
       'noPermissionEditTrip': 'You do not have permission to edit this trip',
@@ -457,7 +474,7 @@ class LocalizationService extends Translations {
       'aiProcessing': 'AI is adjusting the plan...',
       'aiStopSave': 'Stop saving: AI adjustment failed',
       'aiPromptRequired': 'Please enter AI instruction first',
-
+      'openMap': 'Open Map',
       'editTravelPlan': 'Edit Travel Plan',
 
       'tripName': 'Trip Name',
@@ -475,7 +492,6 @@ class LocalizationService extends Translations {
       'price': 'Price',
       'note': 'Note',
 
-      'save': 'Save',
       'saveButton': 'Save',
       'addPlace': 'Add Place',
       'addHotel': 'Add Hotel',
@@ -705,9 +721,6 @@ class LocalizationService extends Translations {
       'other_settings': 'Other settings',
       'profile_info': 'Profile information',
       'profile_info_sub': 'Manage your profile details',
-      'profiledetails': 'Profile details',
-      'displayname': 'Display name',
-      'chooseAvatar': 'Change avatar',
       'age': 'Age',
       'language': 'Language',
       'languageheader': 'Select language',
@@ -746,8 +759,7 @@ class LocalizationService extends Translations {
       'update_password': 'Update password',
 
       "adjustWithAI": "Adjust with AI",
-      "adjustPlan" : "Adjust plan",
-
+      "adjustPlan": "Adjust plan",
 
       // ===== Notifications / Support =====
       'notifications': 'Notifications',

@@ -44,19 +44,21 @@ class _TaskViewPageState extends State<TaskViewPage>
 
   Future<void> _openGoogleMap(double lat, double lng, {String? label}) async {
     final q = Uri.encodeComponent(label ?? 'location'.tr);
-    final googleUrl = Uri.parse('https://www.google.com/maps/search/?api=1&query=$lat,$lng($q)');
-    
+    final googleUrl = Uri.parse(
+      'https://www.google.com/maps/search/?api=1&query=$lat,$lng($q)',
+    );
+
     if (await canLaunchUrl(googleUrl)) {
       await launchUrl(googleUrl, mode: LaunchMode.externalApplication);
       return;
     }
-    
+
     final geoUri = Uri.parse('geo:$lat,$lng?q=$lat,$lng($q)');
     if (await canLaunchUrl(geoUri)) {
       await launchUrl(geoUri, mode: LaunchMode.externalApplication);
       return;
     }
-    
+
     final appleUrl = Uri.parse('http://maps.apple.com/?ll=$lat,$lng&q=$q');
     await launchUrl(appleUrl, mode: LaunchMode.externalApplication);
   }
@@ -93,11 +95,11 @@ class _TaskViewPageState extends State<TaskViewPage>
     );
     _slideAnimation =
         Tween<Offset>(begin: const Offset(0, 0.25), end: Offset.zero).animate(
-      CurvedAnimation(
-        parent: _animationController,
-        curve: Curves.easeOutBack,
-      ),
-    );
+          CurvedAnimation(
+            parent: _animationController,
+            curve: Curves.easeOutBack,
+          ),
+        );
     _animationController.forward();
   }
 
@@ -133,18 +135,29 @@ class _TaskViewPageState extends State<TaskViewPage>
 
   String _formatTime(dynamic time) {
     if (time == null) return '';
+
     try {
+      if (time is DateTime) {
+        return DateFormat('HH:mm').format(time);
+      }
+
       final t = time.toString();
+
+      final dt = DateTime.tryParse(t);
+      if (dt != null) {
+        return DateFormat('HH:mm').format(dt);
+      }
+
       if (t.contains(':')) {
         final parts = t.split(':');
         final hour = int.tryParse(parts[0]) ?? 0;
         final minute = int.tryParse(parts[1]) ?? 0;
-        final dt = DateTime(2024, 1, 1, hour, minute);
-        return DateFormat('HH:mm').format(dt);
+        return DateFormat('HH:mm').format(DateTime(2024, 1, 1, hour, minute));
       }
-      return t;
+
+      return '';
     } catch (_) {
-      return time.toString();
+      return '';
     }
   }
 
@@ -566,15 +579,29 @@ class _TaskViewPageState extends State<TaskViewPage>
 
   // ===== Item views =====
   Widget _buildPlanItemView(Map<String, dynamic> item, int index) {
+    debugPrint("ITEM $index FULL DATA -> $item");
     final done = item['done'] == true || item['completed'] == true;
     final title = (item['title'] ?? '').toString();
     final description = _stripMapLinks((item['description'] ?? '').toString());
     final startDate = item['start_date'];
-    final time = _formatTime(item['time']);
+
+    final hasTimeField =
+        item['time'] != null ||
+        item['start_time'] != null ||
+        item['startTime'] != null;
+
+    final rawTime =
+        item['time'] ?? item['start_time'] ?? item['startTime'] ?? '';
+    debugPrint("ITEM $index -> ${item['start_date']}");
+
+    final time = _formatTime(rawTime);
     final duration = (item['duration'] ?? '').toString();
     final List<String> images = [
-      if (item['image'] != null && item['image'].toString().startsWith('http')) item['image'].toString(),
-      ...(item['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
+      if (item['image'] != null && item['image'].toString().startsWith('http'))
+        item['image'].toString(),
+      ...(item['images'] as List? ?? [])
+          .map((e) => e.toString())
+          .where((u) => u.startsWith('http')),
     ];
 
     // ใช้ Logic แก้พิกัดจาก AiImportPage
@@ -597,18 +624,24 @@ class _TaskViewPageState extends State<TaskViewPage>
           Row(
             children: [
               Container(
-                width: 26, height: 26,
+                width: 26,
+                height: 26,
                 decoration: BoxDecoration(
                   color: Colors.blue.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Center(
-                  child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF111827))),
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
                 ),
               ),
               const Spacer(),
-              if (done)
-                _buildDoneBadge(),
+              if (done) _buildDoneBadge(),
             ],
           ),
 
@@ -622,14 +655,21 @@ class _TaskViewPageState extends State<TaskViewPage>
           Text(
             title.isEmpty ? 'untitledsubtask'.tr : title,
             style: TextStyle(
-              fontSize: 16, fontWeight: FontWeight.w800,
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
               color: done ? Colors.grey[600] : const Color(0xFF111827),
               decoration: done ? TextDecoration.lineThrough : null,
             ),
           ),
           if (description.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(description, style: TextStyle(color: done ? Colors.grey[500] : const Color(0xFF374151), height: 1.5)),
+            Text(
+              description,
+              style: TextStyle(
+                color: done ? Colors.grey[500] : const Color(0xFF374151),
+                height: 1.5,
+              ),
+            ),
           ],
 
           const SizedBox(height: 10),
@@ -637,14 +677,24 @@ class _TaskViewPageState extends State<TaskViewPage>
           const SizedBox(height: 10),
 
           Wrap(
-            spacing: 8, runSpacing: 8,
+            spacing: 8,
+            runSpacing: 8,
             children: [
               if (startDate != null)
-                _infoChip(icon: Icons.calendar_today_rounded, label: _formatDateFlexible(startDate), color: const Color(0xFF3B82F6)),
-              if (time.isNotEmpty || duration.isNotEmpty)
-                _infoChip(icon: Icons.schedule_rounded, 
-                  label: time.isNotEmpty && duration.isNotEmpty ? '$time ($duration)' : (time.isNotEmpty ? time : duration), 
-                  color: const Color(0xFFF59E0B)),
+                _infoChip(
+                  icon: Icons.calendar_today_rounded,
+                  label: _formatDateFlexible(startDate),
+                  color: const Color(0xFF3B82F6),
+                ),
+
+              if (hasTimeField || duration.isNotEmpty)
+                _infoChip(
+                  icon: Icons.schedule_rounded,
+                  label: time.isNotEmpty && duration.isNotEmpty
+                      ? '$time ($duration)'
+                      : (time.isNotEmpty ? time : duration),
+                  color: const Color(0xFFF59E0B),
+                ),
             ],
           ),
 
@@ -663,15 +713,35 @@ class _TaskViewPageState extends State<TaskViewPage>
                       lng: lng,
                     ),
                     Positioned(
-                      right: 8, bottom: 8,
+                      right: 8,
+                      bottom: 8,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(6)),
-                        child: Row(children: [
-                          Icon(Icons.map_rounded, color: Colors.white, size: 14),
-                          SizedBox(width: 4),
-                          Text('openMap'.tr, style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w600)),
-                        ]),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              Icons.map_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'openMap'.tr,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ],
@@ -690,8 +760,11 @@ class _TaskViewPageState extends State<TaskViewPage>
     final price = (h['price'] ?? '').toString();
     final reserve = h['reserve'] == true;
     final List<String> images = [
-      if (h['image'] != null && h['image'].toString().startsWith('http')) h['image'].toString(),
-      ...(h['images'] as List? ?? []).map((e) => e.toString()).where((u) => u.startsWith('http')),
+      if (h['image'] != null && h['image'].toString().startsWith('http'))
+        h['image'].toString(),
+      ...(h['images'] as List? ?? [])
+          .map((e) => e.toString())
+          .where((u) => u.startsWith('http')),
     ];
 
     // ใช้ Logic แก้พิกัดจาก AiImportPage
@@ -712,14 +785,35 @@ class _TaskViewPageState extends State<TaskViewPage>
           Row(
             children: [
               Container(
-                width: 26, height: 26,
-                decoration: BoxDecoration(color: Colors.purple.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
-                child: Center(child: Text('${index + 1}', style: const TextStyle(fontWeight: FontWeight.w700, color: Color(0xFF111827)))),
+                width: 26,
+                height: 26,
+                decoration: BoxDecoration(
+                  color: Colors.purple.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Center(
+                  child: Text(
+                    '${index + 1}',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               const Icon(Icons.bed_rounded, color: Colors.purple, size: 18),
               const SizedBox(width: 8),
-              Expanded(child: Text(title.isEmpty ? 'hotel'.tr : title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF111827)))),
+              Expanded(
+                child: Text(
+                  title.isEmpty ? 'hotel'.tr : title,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF111827),
+                  ),
+                ),
+              ),
               if (reserve) _buildReserveBadge(),
             ],
           ),
@@ -732,11 +826,18 @@ class _TaskViewPageState extends State<TaskViewPage>
           const SizedBox(height: 8),
 
           if (price.isNotEmpty)
-            _infoChip(icon: Icons.attach_money_rounded, label: price, color: const Color(0xFF059669)),
+            _infoChip(
+              icon: Icons.attach_money_rounded,
+              label: price,
+              color: const Color(0xFF059669),
+            ),
 
           if (notes.isNotEmpty) ...[
             const SizedBox(height: 6),
-            Text(notes, style: const TextStyle(color: Color(0xFF374151), height: 1.5)),
+            Text(
+              notes,
+              style: const TextStyle(color: Color(0xFF374151), height: 1.5),
+            ),
           ],
 
           // ฝังแผนที่ Interactive สำหรับโรงแรม
@@ -746,10 +847,48 @@ class _TaskViewPageState extends State<TaskViewPage>
               borderRadius: BorderRadius.circular(12),
               child: GestureDetector(
                 onTap: () => _openGoogleMap(lat, lng, label: title),
-                child: MapPreview(
-                  key: ValueKey('hotel_map_${currentTask.id}_${index}_$lat'),
-                  lat: lat,
-                  lng: lng,
+                child: Stack(
+                  children: [
+                    MapPreview(
+                      key: ValueKey(
+                        'hotel_map_${currentTask.id}_${index}_$lat',
+                      ),
+                      lat: lat,
+                      lng: lng,
+                    ),
+                    Positioned(
+                      right: 8,
+                      bottom: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.map_rounded,
+                              color: Colors.white,
+                              size: 14,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'openMap'.tr,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -763,28 +902,62 @@ class _TaskViewPageState extends State<TaskViewPage>
   Widget _buildDoneBadge() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(color: Colors.green.withOpacity(0.12), borderRadius: BorderRadius.circular(6)),
-      child:  Row(children: [
-        Icon(Icons.check_circle, size: 14, color: Colors.green),
-        SizedBox(width: 6),
-        Text('done'.tr, style: TextStyle(color: Colors.green, fontWeight: FontWeight.w700, fontSize: 11)),
-      ]),
+      decoration: BoxDecoration(
+        color: Colors.green.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle, size: 14, color: Colors.green),
+          SizedBox(width: 6),
+          Text(
+            'done'.tr,
+            style: TextStyle(
+              color: Colors.green,
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildReserveBadge() {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: const Color(0xFFFEF3C7), borderRadius: BorderRadius.circular(8), border: Border.all(color: const Color(0xFFF59E0B))),
-      child: Row(children: [
-        Icon(Icons.event_available_rounded, size: 14, color: Color(0xFFF59E0B)),
-        SizedBox(width: 4),
-        Text('shouldBookInAdvance'.tr, style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w700, fontSize: 11)),
-      ]),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF3C7),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFF59E0B)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.event_available_rounded,
+            size: 14,
+            color: Color(0xFFF59E0B),
+          ),
+          SizedBox(width: 4),
+          Text(
+            'shouldBookInAdvance'.tr,
+            style: TextStyle(
+              color: Color(0xFFB45309),
+              fontWeight: FontWeight.w700,
+              fontSize: 11,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
-  Widget _infoChip({required IconData icon, required String label, required Color color, VoidCallback? onTap}) {
+  Widget _infoChip({
+    required IconData icon,
+    required String label,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
@@ -800,21 +973,34 @@ class _TaskViewPageState extends State<TaskViewPage>
           children: [
             Icon(icon, size: 14, color: color),
             const SizedBox(width: 6),
-            Text(label, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildStatusHeaderBar(Map<String, dynamic> statusInfo, {String roleBadge = ''}) {
+  Widget _buildStatusHeaderBar(
+    Map<String, dynamic> statusInfo, {
+    String roleBadge = '',
+  }) {
     return Padding(
       padding: const EdgeInsets.only(left: 8, right: 8),
       child: Row(
         children: [
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+            icon: const Icon(
+              Icons.arrow_back_ios_new_rounded,
+              color: Colors.white,
+            ),
           ),
           Container(
             padding: const EdgeInsets.all(12),
@@ -823,7 +1009,11 @@ class _TaskViewPageState extends State<TaskViewPage>
               borderRadius: BorderRadius.circular(16),
               border: Border.all(color: Colors.white.withOpacity(0.3)),
             ),
-            child: const Icon(Icons.visibility_rounded, color: Colors.white, size: 28),
+            child: const Icon(
+              Icons.visibility_rounded,
+              color: Colors.white,
+              size: 28,
+            ),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -833,25 +1023,51 @@ class _TaskViewPageState extends State<TaskViewPage>
               children: [
                 Row(
                   children: [
-                     Expanded(
-                      child: Text('tripPlan'.tr, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 24)),
+                    Expanded(
+                      child: Text(
+                        'tripPlan'.tr,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 24,
+                        ),
+                      ),
                     ),
                     if (roleBadge.isNotEmpty)
                       Container(
                         margin: const EdgeInsets.only(left: 8),
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white.withOpacity(0.3)),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.3),
+                          ),
                         ),
-                        child: Text(roleBadge, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700, fontSize: 12)),
+                        child: Text(
+                          roleBadge,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                          ),
+                        ),
                       ),
                   ],
                 ),
-                Text('${'status'.tr}: ${statusOptions[currentTask.status]?['label'] ?? '—'}',
-                  style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 13, fontWeight: FontWeight.w500)),
+                Text(
+                  '${'status'.tr}: ${statusOptions[currentTask.status]?['label'] ?? '—'}',
+                  style: TextStyle(
+                    color: Colors.white.withOpacity(0.9),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
           ),
@@ -876,8 +1092,22 @@ class _TaskViewPageState extends State<TaskViewPage>
               child: Image.network(
                 images[index],
                 fit: BoxFit.cover,
-                loadingBuilder: (c, w, p) => p == null ? w : Container(color: Colors.grey[200], child: const Center(child: CircularProgressIndicator(strokeWidth: 2))),
-                errorBuilder: (_, __, ___) => Container(color: Colors.grey[300], child: const Icon(Icons.broken_image_rounded, size: 36, color: Colors.grey)),
+                loadingBuilder: (c, w, p) => p == null
+                    ? w
+                    : Container(
+                        color: Colors.grey[200],
+                        child: const Center(
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      ),
+                errorBuilder: (_, __, ___) => Container(
+                  color: Colors.grey[300],
+                  child: const Icon(
+                    Icons.broken_image_rounded,
+                    size: 36,
+                    color: Colors.grey,
+                  ),
+                ),
               ),
             ),
           );

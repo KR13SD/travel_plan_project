@@ -1,9 +1,9 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class AuthController extends GetxController {
@@ -197,22 +197,8 @@ class AuthController extends GetxController {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null) throw Exception("No logged-in user");
 
-    final storageRef = FirebaseStorage.instance
-        .ref()
-        .child('profile_images')
-        .child('${user.uid}.jpg');
-
-    try {
-      final uploadTask = storageRef.putFile(imageFile);
-      final snapshot = await uploadTask;
-      if (snapshot.state != TaskState.success) {
-        throw Exception("Upload failed");
-      }
-      final url = await storageRef.getDownloadURL();
-      return url;
-    } on FirebaseException catch (e) {
-      throw Exception("Firebase Storage error: ${e.message}");
-    }
+    final bytes = await imageFile.readAsBytes();
+    return 'data:image/jpeg;base64,${base64Encode(bytes)}';
   }
 
   // ====== Register with extra fields (age + travelStyles) ======

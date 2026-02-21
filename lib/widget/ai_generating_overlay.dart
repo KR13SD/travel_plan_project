@@ -79,12 +79,26 @@ class AiGeneratingOverlay extends StatelessWidget {
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
-                    if (!isGenerating)
+                    if (!isGenerating) ...[
                       const Icon(
                         Icons.arrow_forward_ios_rounded,
                         size: 16,
                         color: Colors.white,
                       ),
+                      const SizedBox(width: 8),
+                      // ปุ่ม dismiss
+                      GestureDetector(
+                        onTap: () {
+                          aiCtrl.hasResultReady.value = false;
+                          aiCtrl.update();
+                        },
+                        child: const Icon(
+                          Icons.close_rounded,
+                          size: 20,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

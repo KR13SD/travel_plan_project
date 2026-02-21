@@ -54,6 +54,13 @@ class _AiImportPageState extends State<AiImportPage>
   void initState() {
     super.initState();
     aiCtrl.isOnAiImportPage.value = true;
+
+    _controller.text = aiCtrl.pendingInputText;
+
+    _controller.addListener(() {
+      aiCtrl.pendingInputText = _controller.text;
+    });
+
     _fadeCtrl = AnimationController(
       duration: const Duration(milliseconds: 600),
       vsync: this,
@@ -253,6 +260,7 @@ class _AiImportPageState extends State<AiImportPage>
         aiCtrl.aiMainTask = null;
         aiCtrl.planPoints.clear();
         aiCtrl.hotelPoints.clear();
+        aiCtrl.pendingInputText = '';
         _selectedHotelIndex = null;
         _showScrollToTop = false;
         _selectedImageIndex.clear();
@@ -812,8 +820,6 @@ class _AiImportPageState extends State<AiImportPage>
           children: [
             IconButton(
               onPressed: () {
-                print('=== BACK PRESSED ===');
-                print('Can pop: ${Navigator.of(context).canPop()}');
                 Navigator.of(context).pop();
               },
               icon: const Icon(
@@ -1305,27 +1311,72 @@ class _AiImportPageState extends State<AiImportPage>
         .where((u) => u.startsWith('http'))
         .toList();
 
+    String _removeMapLinks(String text) {
+      if (text.trim().isEmpty) return text;
+
+      // ลบ google maps link ทั้งแบบมี prefix และไม่มี
+      final mapRegex = RegExp(
+        r'(แผนที่:\s*)?https?:\/\/(www\.)?google\.[^\/]+\/maps[^\s]*',
+        caseSensitive: false,
+      );
+
+      // ลบทั้งบรรทัดที่มี map:
+      final mapLineRegex = RegExp(r'^(แผนที่:|map:).*', caseSensitive: false);
+
+      final lines = text.split(RegExp(r'\r?\n'));
+
+      final cleaned = lines
+          .map((line) {
+            // ลบทั้งบรรทัดถ้าเป็น "แผนที่:"
+            if (mapLineRegex.hasMatch(line.trim())) {
+              return '';
+            }
+
+            // ลบเฉพาะ URL ถ้าปะปนกับข้อความ
+            return line.replaceAll(mapRegex, '').trim();
+          })
+          .where((line) => line.isNotEmpty)
+          .toList();
+
+      return cleaned.join('\n').trim();
+    }
+
     final List<String> imagesAll = <String>[
       if (image != null && image.startsWith('http')) image,
       ...images,
     ].toSet().toList();
 
     // ปรับเคส "name: , description:" ที่อาจติดมา
-    String displayTitle = rawTitle;
-    String displayDescription = rawDesc;
-    if (rawTitle.contains('name:') && rawTitle.contains('description:')) {
+    String displayTitle = rawTitle.trim();
+    String displayDescription = _removeMapLinks(rawDesc.trim());
+
+    print('=== RAW DESCRIPTION ===');
+    print(rawDesc);
+
+    if (displayTitle.contains('name:') &&
+        displayTitle.contains('description:')) {
       final regex = RegExp(r'name:\s*([^,]*),\s*description:\s*(.*)}?');
-      final match = regex.firstMatch(rawTitle);
+
+      final match = regex.firstMatch(displayTitle);
+
       if (match != null) {
-        displayTitle = (match.group(1) ?? rawTitle).trim();
-        displayDescription = (match.group(2) ?? rawDesc).trim();
+        displayTitle = (match.group(1) ?? displayTitle).trim();
+
+        displayDescription = _removeMapLinks(
+          (match.group(2) ?? displayDescription).trim(),
+        );
       }
     }
+
     if (displayDescription.isEmpty && displayTitle.length > 60) {
       final sentences = displayTitle.split('.');
+
       if (sentences.length > 1) {
         displayTitle = sentences[0].trim();
-        displayDescription = sentences.sublist(1).join('.').trim();
+
+        displayDescription = _removeMapLinks(
+          sentences.sublist(1).join('.').trim(),
+        );
       }
     }
 

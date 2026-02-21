@@ -91,7 +91,24 @@ class _TaskDetailPageState extends State<TaskDetailPage>
       m['end_date'] = _toDate(m['end_date']);
 
       // string time/duration
-      if (m['time'] != null) m['time'] = m['time'].toString();
+      if (m['time'] != null && m['start_date'] != null) {
+        final t = m['time'].toString();
+        if (t.contains(':')) {
+          final parts = t.split(':');
+          final hour = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+
+          final base = m['start_date'] as DateTime;
+
+          m['start_date'] = DateTime(
+            base.year,
+            base.month,
+            base.day,
+            hour,
+            minute,
+          );
+        }
+      }
       if (m['duration'] != null) m['duration'] = m['duration'].toString();
 
       // lat/lng
@@ -167,20 +184,30 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     return DateFormat('dd/MM/yyyy').format(_asLocal(d));
   }
 
-  String _fmtTime(String? t) {
-    if (t == null || t.trim().isEmpty) return '';
-    try {
-      if (t.contains(':')) {
-        final parts = t.split(':');
-        final h = int.tryParse(parts[0]) ?? 0;
-        final m = int.tryParse(parts[1]) ?? 0;
-        final dt = DateTime(2024, 1, 1, h, m);
-        return DateFormat('HH:mm').format(dt);
+  String _fmtTime(String? raw) {
+    if (raw == null) return '';
+
+    final cleaned = raw.trim();
+    if (cleaned.isEmpty) return '';
+
+    // รองรับ 9, 9:00, 09.00, 9.30 ฯลฯ
+    final normalized = cleaned.replaceAll('.', ':');
+
+    if (normalized.contains(':')) {
+      final parts = normalized.split(':');
+      if (parts.length == 2) {
+        final hour = parts[0].padLeft(2, '0');
+        final minute = parts[1].padLeft(2, '0');
+        return '$hour:$minute';
       }
-      return t;
-    } catch (_) {
-      return t;
     }
+
+    // ถ้าเป็นแค่ตัวเลข 9 → 09:00
+    if (RegExp(r'^\d{1,2}$').hasMatch(normalized)) {
+      return normalized.padLeft(2, '0') + ':00';
+    }
+
+    return normalized;
   }
 
   /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ
@@ -350,13 +377,32 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
     // ให้ AI ปรับแผนก่อนเซฟ
     {
-      final defaultPrompt = _aiPromptCtrl.text.trim().isNotEmpty
-          ? _aiPromptCtrl.text
-          : 'ตรวจสอบความทับซ้อนของเวลา/เส้นทาง ปรับเวลาให้เหมาะสมต่อเนื่องตามวันเดินทาง และคงลำดับตรรกะของทริป';
-      final ok = await _runAiAdjust(overridePrompt: defaultPrompt, quiet: true);
-      if (!ok) {
-        _showErrorSnackbar('aiAdjustFailed'.tr);
-        return;
+      // 🔥 ตรวจว่ามี item ไหนข้อมูลไม่ครบไหม
+      final hasIncomplete = editedChecklist.any(_isIncomplete);
+
+      if (hasIncomplete) {
+        final ok = await _runAiAdjust(
+          overridePrompt: '''
+                    มีสถานที่ที่ผู้ใช้เพิ่มแบบ manual และข้อมูลบางส่วนอาจขาด
+
+                    ให้ทำดังนี้:
+                    1. เติมข้อมูลที่ขาด เช่น description, lat, lng
+                    2. ตรวจสอบเวลาไม่ให้ทับซ้อนกัน
+                    3. จัดลำดับสถานที่ให้เหมาะสมตามเส้นทาง
+                    4. ปรับเวลาให้ต่อเนื่องโดยเผื่อเวลาเดินทาง
+                    5. ถ้าไม่มีเวลา ให้กำหนดเวลาที่เหมาะสมให้
+
+                    ห้ามลบรายการ
+                    ห้ามเปลี่ยนโครงสร้าง JSON
+                    ต้องคืนข้อมูลครบทุกจุด
+                    ''',
+          quiet: true,
+        );
+
+        if (!ok) {
+          _showErrorSnackbar('aiAdjustFailed'.tr);
+          return;
+        }
       }
     }
 
@@ -435,95 +481,55 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   // -------------------- AI adjust --------------------
   Future<void> _applyAiAdjust() async {
     if (_aiBusy) return;
-
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
     final latest = controller.findTaskById(widget.task.id) ?? widget.task;
     if (!latest.canEdit(uid)) {
       _showErrorSnackbar('noPermission'.tr);
       return;
     }
-
     final prompt = _aiPromptCtrl.text.trim();
     if (prompt.isEmpty) {
       _showErrorSnackbar('aiPromptEmpty'.tr);
       return;
     }
+    // ใช้ _runAiAdjust ที่มี merge logic ถูกต้องอยู่แล้ว
+    await _runAiAdjust(overridePrompt: prompt, quiet: false);
+  }
 
-    setState(() {
-      _aiBusy = true;
-      _aiBusyReason = 'aiProcessing'.tr;
-    });
+  bool _isIncomplete(Map<String, dynamic> item) {
+    final titleEmpty = (item['title'] ?? '').toString().trim().isEmpty;
 
-    try {
-      final payload = {
-        "task": {
-          "id": latest.id,
-          "title": titleController.text.trim(),
-          "startDate": editedStartDate.toIso8601String(),
-          "endDate": editedEndDate.toIso8601String(),
-          "checklist": editedChecklist.map((item) {
-            final m = Map<String, dynamic>.from(item);
-            m['start_date'] = _toDate(m['start_date'])?.toIso8601String();
-            m['end_date'] = _toDate(m['end_date'])?.toIso8601String();
-            m['lat'] = _toDouble(m['lat']);
-            m['lng'] = _toDouble(m['lng']);
-            if (m['time'] != null) m['time'] = m['time'].toString();
-            if (m['duration'] != null) m['duration'] = m['duration'].toString();
-            return m;
-          }).toList(),
-        },
-        "prompt": prompt,
-      };
+    final descEmpty = (item['description'] ?? '').toString().trim().isEmpty;
 
-      final result = await AiApiService.adjustPlan(payload);
-      if ((result['status'] ?? '') != 'ok') {
-        throw Exception(result['message'] ?? 'AI error');
-      }
+    return titleEmpty || descEmpty;
+  }
 
-      final List<dynamic> newList = result['checklist'] ?? [];
+  Future<void> _autoFillIncompleteItem(int index) async {
+    if (_aiBusy) return;
 
-      final normalized = newList.map<Map<String, dynamic>>((raw) {
-        final m = Map<String, dynamic>.from(raw as Map);
-        m['type'] = (m['type'] ?? 'plan').toString();
-        m['done'] = (m['done'] == true);
-        m['expanded'] = m['expanded'] ?? true;
-        m['start_date'] = _toDate(m['start_date']);
-        m['end_date'] = _toDate(m['end_date']);
-        m['lat'] = _toDouble(m['lat']);
-        m['lng'] = _toDouble(m['lng']);
-        if (m['time'] != null) m['time'] = m['time'].toString();
-        if (m['duration'] != null) m['duration'] = m['duration'].toString();
-        if (m['type'] == 'hotel') {
-          m['selectedHotel'] = (m['selectedHotel'] == true);
-        }
-        return m;
-      }).toList();
+    final item = editedChecklist[index];
+    final title = (item['title'] ?? '').toString().trim();
+    if (title.isEmpty) return;
 
-      setState(() {
-        editedChecklist = normalized;
-        checklist = List<Map<String, dynamic>>.from(editedChecklist);
+    // เช็คว่าข้อมูลยังไม่ครบจริงไหม
+    if (!_isIncomplete(item)) return;
 
-        final aiStart = result['startDate']?.toString();
-        final aiEnd = result['endDate']?.toString();
-        if (aiStart != null) {
-          editedStartDate = DateTime.tryParse(aiStart) ?? editedStartDate;
-        }
-        if (aiEnd != null) {
-          editedEndDate = DateTime.tryParse(aiEnd) ?? editedEndDate;
-        }
-      });
+    final time = (item['time'] ?? '').toString();
 
-      _showSuccessSnackbar('aiAdjustSuccess'.tr);
-    } catch (e) {
-      _showErrorSnackbar('aiAdjustFailed'.tr);
-    } finally {
-      if (mounted) {
-        setState(() {
-          _aiBusy = false;
-          _aiBusyReason = null;
-        });
-      }
-    }
+    final prompt =
+        '''
+เติมข้อมูลสถานที่นี้ให้ครบ:
+ชื่อ: $title
+เวลา: ${time.isEmpty ? "ไม่ระบุ" : time}
+
+เงื่อนไข:
+- ห้ามลบรายการอื่น
+- ห้ามเปลี่ยนลำดับ
+- เติม description, lat, lng, address, image ถ้ามี
+- ถ้าไม่มีเวลา ให้กำหนดเวลาเหมาะสม
+''';
+
+    await _runAiAdjust(overridePrompt: prompt, quiet: true);
   }
 
   // เรียก AI แบบใช้ซ้ำ
@@ -566,7 +572,8 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         throw Exception(result['message'] ?? 'AI error');
       }
 
-      final List<dynamic> newList = result['checklist'] ?? [];
+      final List<dynamic> newList =
+          result['plan_output'] ?? result['checklist'] ?? [];
 
       final normalized = newList.map<Map<String, dynamic>>((raw) {
         final m = Map<String, dynamic>.from(raw as Map);
@@ -585,22 +592,96 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         return m;
       }).toList();
 
-      setState(() {
-        editedChecklist = normalized;
-        checklist = List<Map<String, dynamic>>.from(editedChecklist);
+      debugPrint("AI RESULT: $normalized");
 
-        final aiStart = result['startDate']?.toString();
-        final aiEnd = result['endDate']?.toString();
-        if (aiStart != null)
-          editedStartDate = DateTime.tryParse(aiStart) ?? editedStartDate;
-        if (aiEnd != null)
-          editedEndDate = DateTime.tryParse(aiEnd) ?? editedEndDate;
+      final merged = <Map<String, dynamic>>[];
+
+      for (final aiItem in normalized) {
+        final aiTitle = (aiItem['title'] ?? '').toString().trim();
+
+        debugPrint("---- CHECK AI ITEM: $aiTitle ----");
+
+        final oldItem = editedChecklist.firstWhere(
+          (e) => (e['title'] ?? '').toString().trim() == aiTitle,
+          orElse: () => {},
+        );
+
+        if (oldItem.isNotEmpty) {
+          debugPrint("MATCH FOUND for $aiTitle");
+          debugPrint("OLD => ${oldItem.toString()}");
+          debugPrint("AI  => ${aiItem.toString()}");
+
+          final mergedItem = Map<String, dynamic>.from(oldItem);
+
+          aiItem.forEach((key, value) {
+            if (value == null) return;
+
+            // ป้องกัน lat/lng เป็น 0 ทับค่าเดิม
+            if ((key == 'lat' || key == 'lng') && value == 0.0) return;
+
+            // ป้องกัน images list ว่างทับของเดิม
+            if ((key == 'images' || key == 'image') &&
+                value is List &&
+                value.isEmpty)
+              return;
+
+            mergedItem[key] = value;
+          });
+
+          debugPrint("MERGED RESULT => ${mergedItem.toString()}");
+          merged.add(mergedItem);
+        } else {
+          debugPrint("NO MATCH (NEW ITEM): $aiTitle");
+          final newItem = Map<String, dynamic>.from(aiItem);
+
+          // ✅ ดึง time จาก start_date ถ้า AI ไม่ส่ง time มา
+          if ((newItem['time'] ?? '').toString().trim().isEmpty) {
+            final sd = newItem['start_date'];
+            if (sd is DateTime) {
+              final h = sd.hour.toString().padLeft(2, '0');
+              final m = sd.minute.toString().padLeft(2, '0');
+              newItem['time'] = '$h:$m';
+            }
+          }
+
+          // ✅ คำนวณ duration จาก start_date และ end_date ถ้าไม่มี
+          if ((newItem['duration'] ?? '').toString().trim().isEmpty) {
+            final sd = newItem['start_date'];
+            final ed = newItem['end_date'];
+            if (sd is DateTime && ed is DateTime && ed.isAfter(sd)) {
+              final diff = ed.difference(sd);
+              final hours = diff.inHours;
+              final minutes = diff.inMinutes % 60;
+              if (hours > 0 && minutes > 0) {
+                newItem['duration'] = '$hours ชม. $minutes นาที';
+              } else if (hours > 0) {
+                newItem['duration'] = '$hours ชม.';
+              } else {
+                newItem['duration'] = '$minutes นาที';
+              }
+            }
+          }
+
+          merged.add(newItem);
+        }
+      }
+
+      debugPrint("============== AFTER MERGE ==============");
+      for (var e in merged) {
+        debugPrint("FINAL ITEM => ${e.toString()}");
+      }
+      debugPrint("=========================================");
+
+      setState(() {
+        editedChecklist = merged;
+        checklist = List<Map<String, dynamic>>.from(editedChecklist);
       });
 
       if (!quiet) _showSuccessSnackbar('aiAdjustSuccess'.tr);
       return true;
     } catch (e) {
       _showErrorSnackbar('aiAdjustFailed'.tr);
+      debugPrint('AI adjust error: $e');
       return false;
     } finally {
       if (mounted) {
@@ -624,7 +705,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
   }
 
   int? _findNextSameType(int currentIndex, bool isHotel) {
-    final type = isHotel ? 'hotel' : 'plan  ';
+    final type = isHotel ? 'hotel' : 'plan';
     for (int i = currentIndex + 1; i < editedChecklist.length; i++) {
       if ((editedChecklist[i]['type'] ?? 'plan') == type) {
         return i;
@@ -944,7 +1025,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                               if (canEdit && !_aiBusy)
                                 TextButton.icon(
                                   onPressed: () =>
-                                      addChecklistItem(type: 'hotel'.tr),
+                                      addChecklistItem(type: 'hotel'),
                                   icon: const Icon(Icons.add_business_rounded),
                                   label: Text('addHotel'.tr),
                                 ),
@@ -1297,6 +1378,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     required bool canEdit,
     bool isHotel = false,
   }) {
+    print('ITEM DEBUG: ${item.toString()}');
     final expanded = item['expanded'] ?? true;
 
     final DateTime? start = _toDate(item['start_date']);
@@ -1372,7 +1454,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
               border: InputBorder.none,
               contentPadding: EdgeInsets.zero,
             ),
-            onChanged: (val) => item['title'] = val,
+            onChanged: (val) {
+              item['title'] = val;
+            },
           ),
           trailing: !locked
               ? Row(
@@ -1420,7 +1504,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 style: const TextStyle(color: Colors.black87),
                 maxLines: 3,
                 decoration: InputDecoration(
-                  hintText: "detail".tr,
+                  hintText: "description".tr,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: BorderSide(color: Colors.grey[300]!),

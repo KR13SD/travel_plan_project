@@ -9,6 +9,8 @@ class AiImportController extends GetxController {
   final hasResultReady = false.obs;
   final errorMessage = ''.obs;
 
+  String pendingInputText = '';
+
   /// AI result
   TaskModel? aiMainTask;
 

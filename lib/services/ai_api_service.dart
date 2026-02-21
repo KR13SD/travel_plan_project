@@ -43,19 +43,42 @@ class AiApiService {
     );
   }
 
-  
-  static Future<Map<String, dynamic>> adjustPlan(Map<String, dynamic> body) async {
+  static Future<Map<String, dynamic>> adjustPlan(
+    Map<String, dynamic> body,
+  ) async {
     final taskId = (body['task']?['id'] ?? '').toString();
     final instruction = (body['prompt'] ?? '').toString();
     final checklistNow =
-        (body['task']?['checklist'] as List?)?.whereType<Map<String, dynamic>>().toList()
-        ?? <Map<String, dynamic>>[];
+        (body['task']?['checklist'] as List?)
+            ?.whereType<Map<String, dynamic>>()
+            .toList() ??
+        <Map<String, dynamic>>[];
 
-    final startDateStr = (body['task']?['startDate'] ?? body['task']?['start_date'])?.toString();
-    final endDateStr   = (body['task']?['endDate'] ?? body['task']?['end_date'])?.toString();
+    final startDateStr =
+        (body['task']?['startDate'] ?? body['task']?['start_date'])?.toString();
+    final endDateStr = (body['task']?['endDate'] ?? body['task']?['end_date'])
+        ?.toString();
 
-    final startDate = startDateStr != null ? DateTime.parse(startDateStr) : DateTime.now();
-    final endDate   = endDateStr   != null ? DateTime.parse(endDateStr)   : startDate.add(const Duration(days: 1));
+    final startDate = startDateStr != null
+        ? DateTime.parse(startDateStr)
+        : DateTime.now();
+    final endDate = endDateStr != null
+        ? DateTime.parse(endDateStr)
+        : startDate.add(const Duration(days: 1));
+
+    print("========== BEFORE ADJUST ==========");
+    for (var i = 0; i < checklistNow.length; i++) {
+      final item = checklistNow[i];
+      print(
+        "[${i + 1}] ${item['title']} "
+        "| ${item['start_date']} → ${item['end_date']}",
+      );
+    }
+    print("===================================");
+
+    print("========= SENT TO CHANGEPLAN =========");
+    print(jsonEncode(body));
+    print("===================================");
 
     final newChecklist = await changePlan(
       taskId: taskId.isEmpty ? 'local' : taskId,
@@ -64,6 +87,16 @@ class AiApiService {
       startDate: startDate,
       endDate: endDate,
     );
+
+    print("========== AFTER ADJUST ==========");
+    for (var i = 0; i < newChecklist.length; i++) {
+      final item = newChecklist[i];
+      print(
+        "[${i + 1}] ${item['title']} "
+        "| ${item['start_date']} → ${item['end_date']}",
+      );
+    }
+    print("===================================");
 
     return {
       'status': 'ok',
@@ -122,22 +155,22 @@ class AiApiService {
     return Map<String, dynamic>.from(first as Map);
   }
 
-
   static Map<String, dynamic> _extractImages(Map<String, dynamic> source) {
     final raw = source['image_url'];
     final List<String> images = (raw is List)
-        ? raw.map((e) => e.toString()).where((u) => u.startsWith('http')).toList()
+        ? raw
+              .map((e) => e.toString())
+              .where((u) => u.startsWith('http'))
+              .toList()
         : <String>[];
 
-    return {
-      'images': images,
-      'image': images.isNotEmpty ? images.first : null,
-    };
+    return {'images': images, 'image': images.isNotEmpty ? images.first : null};
   }
 
   static TaskModel _buildTaskFromPlanOutput(Map<String, dynamic> output) {
     final String mainTitle =
-        (output['name'] as String?)?.trim().replaceAll('\n', ' ') ?? 'ทริปจาก AI';
+        (output['name'] as String?)?.trim().replaceAll('\n', ' ') ??
+        'ทริปจาก AI';
     final String overview = (output['overview'] as String?)?.trim() ?? '';
     final now = DateTime.now();
 
@@ -164,7 +197,8 @@ class AiApiService {
         final desc = [
           if (short.isNotEmpty) short,
           if (notes.isNotEmpty) 'หมายเหตุ: $notes',
-          if (place['google_maps_url'] != null && place['google_maps_url'].toString().isNotEmpty)
+          if (place['google_maps_url'] != null &&
+              place['google_maps_url'].toString().isNotEmpty)
             'แผนที่: ${place['google_maps_url']}',
         ].join('\n').trim();
 
@@ -174,17 +208,21 @@ class AiApiService {
           final c = Map<String, dynamic>.from(place['coordinates'] as Map);
           final la = c['lat'];
           final ln = c['lng'];
-          lat = la is num ? la.toDouble() : double.tryParse(la?.toString() ?? '');
-          lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
+          lat = la is num
+              ? la.toDouble()
+              : double.tryParse(la?.toString() ?? '');
+          lng = ln is num
+              ? ln.toDouble()
+              : double.tryParse(ln?.toString() ?? '');
         }
 
         final String? startTime = (stop['start_time'] as String?)?.trim();
-        final int? durationMin =
-            stop['stay_duration'] is num ? (stop['stay_duration'] as num).toInt() : null;
-        final Duration dur =
-            (durationMin != null && durationMin > 0)
-                ? Duration(minutes: durationMin)
-                : const Duration(hours: 2);
+        final int? durationMin = stop['stay_duration'] is num
+            ? (stop['stay_duration'] as num).toInt()
+            : null;
+        final Duration dur = (durationMin != null && durationMin > 0)
+            ? Duration(minutes: durationMin)
+            : const Duration(hours: 2);
 
         DateTime startAt;
         if (startTime != null && startTime.contains(':')) {
@@ -202,8 +240,9 @@ class AiApiService {
         cursor = endAt;
 
         final pType = (place['type'] ?? '').toString().toLowerCase();
-        final String priority =
-            pType == 'attraction' ? 'High' : (pType == 'restaurant' ? 'Medium' : 'Low');
+        final String priority = pType == 'attraction'
+            ? 'High'
+            : (pType == 'restaurant' ? 'Medium' : 'Low');
 
         // ✅ ดึงรูปจาก place.image_url
         final img = _extractImages(place);
@@ -229,13 +268,16 @@ class AiApiService {
       }
     }
 
-    final startMain =
-        checklist.isNotEmpty ? DateTime.parse(checklist.first['start_date']) : now;
-    final endMain =
-        checklist.isNotEmpty ? DateTime.parse(checklist.last['end_date']) : now.add(const Duration(days: 1));
+    final startMain = checklist.isNotEmpty
+        ? DateTime.parse(checklist.first['start_date'])
+        : now;
+    final endMain = checklist.isNotEmpty
+        ? DateTime.parse(checklist.last['end_date'])
+        : now.add(const Duration(days: 1));
 
-    final titleWithOverview =
-        overview.isNotEmpty ? '$mainTitle — $overview' : mainTitle;
+    final titleWithOverview = overview.isNotEmpty
+        ? '$mainTitle — $overview'
+        : mainTitle;
 
     return TaskModel(
       id: '',
@@ -252,7 +294,9 @@ class AiApiService {
     );
   }
 
-  static List<Map<String, dynamic>> _extractPlanPoints(Map<String, dynamic> output) {
+  static List<Map<String, dynamic>> _extractPlanPoints(
+    Map<String, dynamic> output,
+  ) {
     final List<Map<String, dynamic>> list = [];
     final days = (output['itinerary'] as List?) ?? const [];
     for (final d in days) {
@@ -274,8 +318,12 @@ class AiApiService {
           final c = Map<String, dynamic>.from(place['coordinates'] as Map);
           final la = c['lat'];
           final ln = c['lng'];
-          lat = la is num ? la.toDouble() : double.tryParse(la?.toString() ?? '');
-          lng = ln is num ? ln.toDouble() : double.tryParse(ln?.toString() ?? '');
+          lat = la is num
+              ? la.toDouble()
+              : double.tryParse(la?.toString() ?? '');
+          lng = ln is num
+              ? ln.toDouble()
+              : double.tryParse(ln?.toString() ?? '');
         }
 
         final img = _extractImages(place);
@@ -290,7 +338,7 @@ class AiApiService {
           'mapsUrl': (place['google_maps_url'] ?? '').toString(),
           'open': (place['opening_hours'] ?? '').toString(),
 
-          // ✅ เพิ่มรูป
+          //  เพิ่มรูป
           'image': img['image'],
           'images': img['images'],
         });
@@ -299,7 +347,9 @@ class AiApiService {
     return list;
   }
 
-  static List<Map<String, dynamic>> _extractHotelPoints(Map<String, dynamic> data) {
+  static List<Map<String, dynamic>> _extractHotelPoints(
+    Map<String, dynamic> data,
+  ) {
     final result = <Map<String, dynamic>>[];
 
     final hotelOuterDyn = data['hotel_output'];
@@ -373,14 +423,14 @@ class AiApiService {
 
     final body = {
       'task_id': taskId,
-      'instruction': instruction,
+      'input': instruction,
       'date_range': {
         'start': startDate.toUtc().toIso8601String(),
         'end': (endDate.isBefore(startDate) ? startDate : endDate)
             .toUtc()
             .toIso8601String(),
       },
-      'checklist': toApi,
+      'olddata': jsonEncode(toApi),
       if (locale != null) 'locale': locale,
       if (city != null) 'city': city,
     };
@@ -392,9 +442,14 @@ class AiApiService {
           body: jsonEncode(body),
         )
         .timeout(const Duration(seconds: 120));
+    print("========= RAW CHANGEPLAN RESPONSE =========");
+    print(resp.body);
+    print("===========================================");
 
     if (resp.statusCode != 200) {
-      throw Exception('changeplan error: HTTP ${resp.statusCode} - ${resp.body}');
+      throw Exception(
+        'changeplan error: HTTP ${resp.statusCode} - ${resp.body}',
+      );
     }
 
     final decoded = jsonDecode(resp.body);
@@ -402,55 +457,58 @@ class AiApiService {
       throw Exception('changeplan: รูปแบบ JSON ไม่ถูกต้อง');
     }
 
-    final rawList = decoded['checklist'];
-    if (rawList is! List) {
-      throw Exception('changeplan: ฟิลด์ checklist ไม่ใช่ List');
+    print("CHANGE PLAN RESPONSE: $decoded");
+
+    Map<String, dynamic> planOutput;
+
+    if (decoded.containsKey('plan_output')) {
+      planOutput = _readPlanOutput(decoded);
+    } else {
+      planOutput = decoded;
     }
 
-    final result = rawList
-        .whereType<Map>()
-        .map((e) {
-          final m = Map<String, dynamic>.from(e);
-          // normalize ตาม UI
-          m['type'] = (m['type'] ?? 'plan').toString();
-          m['done'] = (m['done'] == true) || (m['completed'] == true);
-          m['expanded'] = m['expanded'] ?? true;
+    // ใช้ logic แปลงเป็น checklist โดยตรง
+    // 1️⃣ ดึง hotel เดิมจาก checklistNow
+    final oldHotels = checklistNow.where((e) => e['type'] == 'hotel').toList();
 
-          final p = (m['priority'] ?? '').toString().toLowerCase();
-          if (p == 'high' || p == 'สูง') {
-            m['priority'] = 'High';
-          } else if (p == 'low' || p == 'ต่ำ') {
-            m['priority'] = 'Low';
-          } else {
-            m['priority'] = 'Medium';
-          }
+    // 2️⃣ สร้าง plan ใหม่
+    final newPlans = _extractPlanPoints(planOutput).map((e) {
+      return {
+        'type': 'plan',
+        'title': e['title'],
+        'description': e['notes'] ?? '',
+        'done': false,
+        'expanded': true,
+        'priority': 'Medium',
+        'start_date': startDate.toIso8601String(),
+        'end_date': endDate.toIso8601String(),
+        'lat': e['lat'],
+        'lng': e['lng'],
+        'image': e['image'],
+        'images': e['images'],
+      };
+    }).toList();
 
-          double? toDouble(dynamic v) {
-            if (v == null) return null;
-            if (v is num) return v.toDouble();
-            return double.tryParse(v.toString());
-          }
+    // 3️⃣ รวมกลับ
+    final mergedChecklist = [...newPlans, ...oldHotels];
 
-          m['lat'] = toDouble(m['lat']);
-          m['lng'] = toDouble(m['lng']);
+    return mergedChecklist;
+  }
 
-          // ✅ กันหลุด: ทำให้ image/images เป็นรูปแบบคงที่
-          if (m['images'] is List) {
-            m['images'] = (m['images'] as List).map((e) => e.toString()).toList();
-            m['image'] ??= (m['images'] as List).isNotEmpty ? (m['images'] as List).first : null;
-          } else {
-            m['images'] = const <String>[];
-          }
-
-          if (m['type'] == 'hotel' && m['selectedHotel'] == null) {
-            m['selectedHotel'] = false;
-          }
-
-          return m;
-        })
-        .toList();
-
-    return result;
+  Future<List<Map<String, dynamic>>> addManualPlace({
+    required String placeName,
+    required List<Map<String, dynamic>> currentPlan,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    return changePlan(
+      taskId: 'local',
+      instruction:
+          'เพิ่มสถานที่ชื่อ "$placeName" เข้าไปในแผนเดิม ถ้าข้อมูลไม่ครบให้เติมให้ครบ ห้ามลบโรงแรมเดิม',
+      checklistNow: currentPlan,
+      startDate: startDate,
+      endDate: endDate,
+    );
   }
 
   static Map<String, dynamic> _normalizeForApi(Map<String, dynamic> m) {
@@ -461,7 +519,8 @@ class AiApiService {
       return null;
     }
 
-    String? _toIsoUtc(DateTime? d) => d == null ? null : d.toUtc().toIso8601String();
+    String? _toIsoUtc(DateTime? d) =>
+        d == null ? null : d.toUtc().toIso8601String();
 
     double? _toDouble(dynamic v) {
       if (v == null) return null;
@@ -477,7 +536,9 @@ class AiApiService {
       return 'Medium';
     }
 
-    final images = (m['images'] is List) ? (m['images'] as List).map((e) => e.toString()).toList() : null;
+    final images = (m['images'] is List)
+        ? (m['images'] as List).map((e) => e.toString()).toList()
+        : null;
     final image = m['image']?.toString();
 
     return {
