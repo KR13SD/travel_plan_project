@@ -350,9 +350,14 @@ class LocalizationService extends Translations {
       'paste': 'วาง',
       'backToLogin': 'เข้าสู่ระบบ',
 
+      'aiPromptEmpty': 'กรุณากรอกคำสั่งที่ต้องการให้ AI ปรับแผน',
+
       // Button
       'joinPlanButton': 'เข้าร่วมแผน',
       'joiningPlan': 'กำลังเข้าร่วม...',
+
+      'survey': 'แบบสำรวจความพึงพอใจ',
+      'survey_sub': 'ช่วยเราปรับปรุงแอปของเรา',
 
       // Info section
       'infoTitle': 'ข้อมูลเพิ่มเติม',
@@ -389,6 +394,10 @@ class LocalizationService extends Translations {
       'send_message': 'ส่งข้อความ',
       'sending': 'กำลังส่ง...',
       'send_error': 'ไม่สามารถส่งข้อความได้ กรุณาลองใหม่อีกครั้ง',
+
+      'durationH': '@h ชม.',
+      'durationM': '@m นาที',
+      'durationHM': '@h ชม. @m นาที',
 
       // Errors / Snackbar
       'pleaseEnterInviteCode': 'กรุณากรอกโค้ดเชิญ',
@@ -793,10 +802,15 @@ class LocalizationService extends Translations {
       'welcomeJoinMessage':
           'You can join your friend’s travel plan using an invite code.',
 
+      'durationH': '@h hr',
+      'durationM': '@m min',
+      'durationHM': '@h hr @m min',
+
       // Input
       'inviteCode': 'Invite Code',
       'codeLength': 'Code must contain 6 characters',
       'paste': 'Paste',
+      'aiPromptEmpty': 'Please enter an instruction for AI to adjust your plan',
 
       // Button
       'joinPlanButton': 'Join Plan',
@@ -839,6 +853,8 @@ class LocalizationService extends Translations {
       'leavePlanConfirmTitle': 'Leave this plan?',
       'leavePlanConfirmDesc': 'This plan will no longer appear in your list',
       'confirmLeave': 'Confirm',
+      'survey': 'Satisfaction Survey',
+      'survey_sub': 'Help us improve our app',
     },
   };
 

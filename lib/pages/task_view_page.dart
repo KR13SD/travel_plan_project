@@ -1,5 +1,4 @@
 // lib/pages/task_view_page.dart
-import 'dart:io';
 
 import 'package:ai_task_project_manager/pages/task_detail_page.dart';
 import 'package:ai_task_project_manager/pages/map_preview.dart';
@@ -12,6 +11,51 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../controllers/dashboard_controller.dart';
 import '../models/task_model.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+String normalizeDuration(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return raw;
+
+  final regENHM = RegExp(r'^(\d+)\s*hr?\s*(\d+)\s*min?$', caseSensitive: false);
+  final regENH = RegExp(r'^(\d+)\s*hr?$', caseSensitive: false);
+  final regENM = RegExp(r'^(\d+)\s*min?$', caseSensitive: false);
+
+  final regTHHM = RegExp(r'^(\d+)\s*ชม\.?\s*(\d+)\s*นาที$');
+  final regTHH = RegExp(r'^(\d+)\s*ชม\.?$');
+  final regTHM = RegExp(r'^(\d+)\s*นาที$');
+
+  final regRawHM = RegExp(
+    r'^(\d+)\s*h(?:r|ours?)?\s*(\d+)\s*m(?:in)?$',
+    caseSensitive: false,
+  );
+  final regRawH = RegExp(r'^(\d+)\s*h(?:r|ours?)?$', caseSensitive: false);
+  final regRawM = RegExp(r'^(\d+)\s*m(?:in(?:s)?)?$', caseSensitive: false);
+
+  for (final reg in [regENHM, regTHHM, regRawHM]) {
+    final m = reg.firstMatch(s);
+    if (m != null)
+      return 'durationHM'.trParams({'h': m.group(1)!, 'm': m.group(2)!});
+  }
+  for (final reg in [regENH, regTHH, regRawH]) {
+    final m = reg.firstMatch(s);
+    if (m != null) return 'durationH'.trParams({'h': m.group(1)!});
+  }
+  for (final reg in [regENM, regTHM, regRawM]) {
+    final m = reg.firstMatch(s);
+    if (m != null) {
+      final total = int.parse(m.group(1)!);
+      if (total >= 60) {
+        final h = total ~/ 60;
+        final min = total % 60;
+        return min > 0
+            ? 'durationHM'.trParams({'h': '$h', 'm': '$min'})
+            : 'durationH'.trParams({'h': '$h'});
+      }
+      return 'durationM'.trParams({'m': m.group(1)!});
+    }
+  }
+  return raw;
+}
 
 class TaskViewPage extends StatefulWidget {
   final TaskModel task;
@@ -595,7 +639,8 @@ class _TaskViewPageState extends State<TaskViewPage>
     debugPrint("ITEM $index -> ${item['start_date']}");
 
     final time = _formatTime(rawTime);
-    final duration = (item['duration'] ?? '').toString();
+    final duration = normalizeDuration((item['duration'] ?? '').toString());
+    debugPrint("DURATION RAW=${item['duration']} NORMALIZED=$duration");
     final List<String> images = [
       if (item['image'] != null && item['image'].toString().startsWith('http'))
         item['image'].toString(),

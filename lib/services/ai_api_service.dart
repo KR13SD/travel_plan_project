@@ -93,7 +93,7 @@ class AiApiService {
       final item = newChecklist[i];
       print(
         "[${i + 1}] ${item['title']} "
-        "| ${item['start_date']} → ${item['end_date']}",
+        "| ${item['start_date']} → ${item['end_date']} | time=${item['time']} | duration=${item['duration']}",
       );
     }
     print("===================================");
@@ -244,7 +244,6 @@ class AiApiService {
             ? 'High'
             : (pType == 'restaurant' ? 'Medium' : 'Low');
 
-        // ✅ ดึงรูปจาก place.image_url
         final img = _extractImages(place);
 
         checklist.add({
@@ -260,8 +259,6 @@ class AiApiService {
           'lng': lng,
           'time': startTime,
           'duration': _formatDurationText(durationMin),
-
-          // ✅ เพิ่มรูป
           'image': img['image'],
           'images': img['images'],
         });
@@ -328,6 +325,12 @@ class AiApiService {
 
         final img = _extractImages(place);
 
+        // ✅ ดึง start_time และ stay_duration จาก stop ด้วย
+        final String? startTime = (stop['start_time'] as String?)?.trim();
+        final int? durationMin = stop['stay_duration'] is num
+            ? (stop['stay_duration'] as num).toInt()
+            : null;
+
         list.add({
           'title': title,
           'lat': lat,
@@ -337,10 +340,12 @@ class AiApiService {
           'notes': (place['notes'] ?? '').toString(),
           'mapsUrl': (place['google_maps_url'] ?? '').toString(),
           'open': (place['opening_hours'] ?? '').toString(),
-
-          //  เพิ่มรูป
           'image': img['image'],
           'images': img['images'],
+          // ✅ เพิ่ม time และ duration
+          'time': startTime,
+          'duration': _formatDurationText(durationMin),
+          'stay_duration': durationMin,
         });
       }
     }
@@ -384,12 +389,9 @@ class AiApiService {
         'lng': lng,
         'type': 'hotel',
         'price': (m['price_info'] ?? '').toString(),
-        // คุณใช้ notes ใน UI โรงแรม แต่ใน schema มี notes กับ short_description
         'notes': (m['notes'] ?? m['short_description'] ?? '').toString(),
         'mapsUrl': (m['google_maps_url'] ?? '').toString(),
         'reserve': m['reservation_recommended'] == true,
-
-        // ✅ เพิ่มรูป
         'image': img['image'],
         'images': img['images'],
       });
@@ -402,12 +404,13 @@ class AiApiService {
     if (minutes == null || minutes <= 0) return '';
     final h = minutes ~/ 60;
     final m = minutes % 60;
+    // เก็บเป็น "2h30m" แล้วไปแปลงใน UI
     if (h > 0 && m > 0) return '${h}h${m}m';
     if (h > 0) return '${h}h';
     return '${m}m';
   }
 
-  // ===== changePlan  =====
+  // ===== changePlan =====
   static Future<List<Map<String, dynamic>>> changePlan({
     required String taskId,
     required String instruction,
@@ -467,32 +470,104 @@ class AiApiService {
       planOutput = decoded;
     }
 
-    // ใช้ logic แปลงเป็น checklist โดยตรง
     // 1️⃣ ดึง hotel เดิมจาก checklistNow
     final oldHotels = checklistNow.where((e) => e['type'] == 'hotel').toList();
 
-    // 2️⃣ สร้าง plan ใหม่
-    final newPlans = _extractPlanPoints(planOutput).map((e) {
-      return {
-        'type': 'plan',
-        'title': e['title'],
-        'description': e['notes'] ?? '',
-        'done': false,
-        'expanded': true,
-        'priority': 'Medium',
-        'start_date': startDate.toIso8601String(),
-        'end_date': endDate.toIso8601String(),
-        'lat': e['lat'],
-        'lng': e['lng'],
-        'image': e['image'],
-        'images': e['images'],
-      };
-    }).toList();
+    // 2️⃣ สร้าง plan ใหม่ โดยใช้เวลาจาก stop จริงๆ
+    final days = (planOutput['itinerary'] as List?) ?? const [];
+    final newPlans = <Map<String, dynamic>>[];
+
+    DateTime cursor = startDate;
+
+    for (final d in days) {
+      if (d is! Map) continue;
+      final day = Map<String, dynamic>.from(d);
+
+      // ✅ ดึงวันที่ของ day นี้ถ้ามี
+      DateTime dayBase = cursor;
+      final dayDateStr = (day['date'] ?? '').toString();
+      if (dayDateStr.isNotEmpty) {
+        final parsed = DateTime.tryParse(dayDateStr);
+        if (parsed != null) dayBase = parsed;
+      }
+
+      final stops = (day['stops'] as List?) ?? const [];
+      for (final s in stops) {
+        if (s is! Map) continue;
+        final stop = Map<String, dynamic>.from(s);
+        if (stop['places'] is! Map) continue;
+        final place = Map<String, dynamic>.from(stop['places'] as Map);
+
+        final name = (place['name'] ?? '').toString().trim();
+        if (name.isEmpty) continue;
+
+        // ✅ เวลาเริ่ม
+        final String? startTime = (stop['start_time'] as String?)?.trim();
+        final int? durationMin = stop['stay_duration'] is num
+            ? (stop['stay_duration'] as num).toInt()
+            : null;
+        final Duration dur = (durationMin != null && durationMin > 0)
+            ? Duration(minutes: durationMin)
+            : const Duration(hours: 1);
+
+        DateTime startAt;
+        if (startTime != null && startTime.contains(':')) {
+          final parts = startTime.split(':');
+          final h = int.tryParse(parts[0]) ?? 9;
+          final m = int.tryParse(parts[1]) ?? 0;
+          startAt = DateTime(dayBase.year, dayBase.month, dayBase.day, h, m);
+          if (startAt.isBefore(cursor)) startAt = cursor;
+        } else {
+          startAt = cursor;
+        }
+        final endAt = startAt.add(dur);
+        cursor = endAt;
+
+        // ✅ lat/lng
+        double? lat;
+        double? lng;
+        if (place['coordinates'] is Map) {
+          final c = Map<String, dynamic>.from(place['coordinates'] as Map);
+          final la = c['lat'];
+          final ln = c['lng'];
+          lat = la is num
+              ? la.toDouble()
+              : double.tryParse(la?.toString() ?? '');
+          lng = ln is num
+              ? ln.toDouble()
+              : double.tryParse(ln?.toString() ?? '');
+        }
+
+        final short = (place['short_description'] ?? '').toString().trim();
+        final notes = (place['notes'] ?? '').toString().trim();
+        final desc = [
+          if (short.isNotEmpty) short,
+          if (notes.isNotEmpty) notes,
+        ].join('\n').trim();
+
+        final img = _extractImages(place);
+
+        newPlans.add({
+          'type': 'plan',
+          'title': name,
+          'description': desc,
+          'done': false,
+          'expanded': true,
+          'priority': 'Medium',
+          'start_date': startAt.toIso8601String(), // ✅ เวลาที่ถูกต้อง
+          'end_date': endAt.toIso8601String(), // ✅ เวลาที่ถูกต้อง
+          'time': startTime, // ✅ "09:00", "13:30"
+          'duration': _formatDurationText(durationMin), // ✅ "1 ชม.", "30 นาที"
+          'lat': lat,
+          'lng': lng,
+          'image': img['image'],
+          'images': img['images'],
+        });
+      }
+    }
 
     // 3️⃣ รวมกลับ
-    final mergedChecklist = [...newPlans, ...oldHotels];
-
-    return mergedChecklist;
+    return [...newPlans, ...oldHotels];
   }
 
   Future<List<Map<String, dynamic>>> addManualPlace({
@@ -556,7 +631,6 @@ class AiApiService {
       'price': m['price']?.toString(),
       'notes': m['notes']?.toString(),
       'mapsUrl': m['mapsUrl']?.toString(),
-
       if (image != null && image.isNotEmpty) 'image': image,
       if (images != null && images.isNotEmpty) 'images': images,
     };

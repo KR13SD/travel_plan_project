@@ -1,6 +1,7 @@
 import 'package:ai_task_project_manager/controllers/auth_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class SettingPage extends StatelessWidget {
   SettingPage({super.key});
@@ -99,6 +100,27 @@ class SettingPage extends StatelessWidget {
                 iconColor: Colors.indigo,
                 iconBg: Colors.indigo.shade50,
               ),
+              _buildDivider(),
+              _buildSettingsTile(
+                icon: Icons.feedback_outlined,
+                title: "survey".tr,
+                subtitle: "survey_sub".tr,
+                onTap: () async {
+                  final Uri url = Uri.parse(
+                    'https://docs.google.com/forms/d/e/1FAIpQLScncGndwQ_gYNwPzu0fcn7s5qjyza9nIPIEm1wOUl4ZW_Ea3A/viewform',
+                  );
+                  try {
+                    await launchUrl(
+                      url,
+                      mode: LaunchMode.inAppBrowserView, // เปลี่ยนตรงนี้
+                    );
+                  } catch (e) {
+                    Get.snackbar('Error', 'Could not open the link');
+                  }
+                },
+                iconColor: Colors.amber.shade700,
+                iconBg: Colors.amber.shade50,
+              ),
             ]),
 
             const SizedBox(height: 24),
@@ -118,7 +140,7 @@ class SettingPage extends StatelessWidget {
           "logout".tr,
           style: TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
         ),
-          content: Text(
+        content: Text(
           "confirmlogout".tr,
           style: TextStyle(fontSize: 14, color: Colors.black87),
         ),
@@ -155,7 +177,6 @@ class SettingPage extends StatelessWidget {
       ),
     );
   }
-
 
   Widget _buildSectionTitle(String title) {
     return Padding(

@@ -172,6 +172,54 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     return null;
   }
 
+  // normalize "1h", "1h30m", "90min" → "1 ชม. 30 นาที"
+  String _normalizeDuration(String raw) {
+    final s = raw.trim();
+    if (s.isEmpty) return raw;
+
+    // EN: "1 hr 30 min", "1 hr", "30 min"
+    final regENHM = RegExp(r'^(\d+)\s*hr?\s*(\d+)\s*min?$', caseSensitive: false);
+    final regENH  = RegExp(r'^(\d+)\s*hr?$', caseSensitive: false);
+    final regENM  = RegExp(r'^(\d+)\s*min?$', caseSensitive: false);
+
+    // TH: "1 ชม. 30 นาที", "1 ชม.", "30 นาที"
+    final regTHHM = RegExp(r'^(\d+)\s*ชม\.?\s*(\d+)\s*นาที$');
+    final regTHH  = RegExp(r'^(\d+)\s*ชม\.?$');
+    final regTHM  = RegExp(r'^(\d+)\s*นาที$');
+
+    // raw: "1h30m", "1h", "30m", "90min"
+    final regRawHM = RegExp(r'^(\d+)\s*h(?:r|ours?)?\s*(\d+)\s*m(?:in)?$', caseSensitive: false);
+    final regRawH  = RegExp(r'^(\d+)\s*h(?:r|ours?)?$', caseSensitive: false);
+    final regRawM  = RegExp(r'^(\d+)\s*m(?:in(?:s)?)?$', caseSensitive: false);
+
+    // HM patterns
+    for (final reg in [regENHM, regTHHM, regRawHM]) {
+      final m = reg.firstMatch(s);
+      if (m != null) return 'durationHM'.trParams({'h': m.group(1)!, 'm': m.group(2)!});
+    }
+    // H patterns
+    for (final reg in [regENH, regTHH, regRawH]) {
+      final m = reg.firstMatch(s);
+      if (m != null) return 'durationH'.trParams({'h': m.group(1)!});
+    }
+    // M patterns
+    for (final reg in [regENM, regTHM, regRawM]) {
+      final m = reg.firstMatch(s);
+      if (m != null) {
+        final total = int.parse(m.group(1)!);
+        if (total >= 60) {
+          final h = total ~/ 60;
+          final min = total % 60;
+          return min > 0
+              ? 'durationHM'.trParams({'h': '$h', 'm': '$min'})
+              : 'durationH'.trParams({'h': '$h'});
+        }
+        return 'durationM'.trParams({'m': m.group(1)!});
+      }
+    }
+    return raw;
+  }
+
   double? _toDouble(dynamic v) {
     if (v == null) return null;
     if (v is num) return v.toDouble();
@@ -210,7 +258,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     return normalized;
   }
 
-  /// ตัดบรรทัดที่เป็น “ลิงก์แผนที่” ออกจากข้อความ
+  /// ตัดบรรทัดที่เป็น "ลิงก์แผนที่" ออกจากข้อความ
   String _stripMapLinks(String text) {
     if (text.trim().isEmpty) return text;
     final lines = text.split(RegExp(r'\r?\n'));
@@ -580,15 +628,31 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         m['type'] = (m['type'] ?? 'plan').toString();
         m['done'] = (m['done'] == true);
         m['expanded'] = m['expanded'] ?? true;
-        m['start_date'] = _toDate(m['start_date']);
-        m['end_date'] = _toDate(m['end_date']);
         m['lat'] = _toDouble(m['lat']);
         m['lng'] = _toDouble(m['lng']);
-        if (m['time'] != null) m['time'] = m['time'].toString();
+        // เก็บ duration เป็น raw format ไว้ใน state ไม่ translate
+        // จะ translate เฉพาะตอน render ใน _buildChecklistItem
         if (m['duration'] != null) m['duration'] = m['duration'].toString();
         if (m['type'] == 'hotel') {
           m['selectedHotel'] = (m['selectedHotel'] == true);
         }
+
+        // ✅ parse date ก่อน แล้ว apply time ทันที
+        final timeStr = (m['time'] ?? '').toString().trim();
+        DateTime? sd = _toDate(m['start_date']);
+        DateTime? ed = _toDate(m['end_date']);
+
+        if (timeStr.isNotEmpty && sd != null && timeStr.contains(':')) {
+          final parts = timeStr.split(':');
+          final hour   = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+          sd = DateTime(sd.year, sd.month, sd.day, hour, minute);
+        }
+
+        m['time'] = timeStr.isEmpty ? null : timeStr;
+        m['start_date'] = sd;
+        m['end_date'] = ed;
+
         return m;
       }).toList();
 
@@ -603,7 +667,16 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
         final oldItem = editedChecklist.firstWhere(
           (e) => (e['title'] ?? '').toString().trim() == aiTitle,
-          orElse: () => {},
+          orElse: () {
+            // fallback: ถ้าเป็น hotel และ match title ไม่ได้ ให้หา hotel ตัวแรกที่ยังไม่ถูก match
+            if ((aiItem['type'] ?? '') == 'hotel') {
+              return editedChecklist.firstWhere(
+                (e) => e['type'] == 'hotel',
+                orElse: () => {},
+              );
+            }
+            return {};
+          },
         );
 
         if (oldItem.isNotEmpty) {
@@ -622,8 +695,11 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             // ป้องกัน images list ว่างทับของเดิม
             if ((key == 'images' || key == 'image') &&
                 value is List &&
-                value.isEmpty)
-              return;
+                value.isEmpty) return;
+
+            // ป้องกัน price / reserve ว่างทับค่าเดิม
+            if ((key == 'price' || key == 'reserve') &&
+                value.toString().trim().isEmpty) return;
 
             mergedItem[key] = value;
           });
@@ -644,25 +720,47 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             }
           }
 
-          // ✅ คำนวณ duration จาก start_date และ end_date ถ้าไม่มี
+          // ✅ คำนวณ duration จาก start_date และ end_date
+          // ใช้ _toDate() เพื่อ normalize timezone ก่อนคำนวณทุกครั้ง
           if ((newItem['duration'] ?? '').toString().trim().isEmpty) {
-            final sd = newItem['start_date'];
-            final ed = newItem['end_date'];
-            if (sd is DateTime && ed is DateTime && ed.isAfter(sd)) {
+            final sd = _toDate(newItem['start_date']);
+            final ed = _toDate(newItem['end_date']);
+            if (sd != null && ed != null && ed.isAfter(sd)) {
               final diff = ed.difference(sd);
-              final hours = diff.inHours;
-              final minutes = diff.inMinutes % 60;
-              if (hours > 0 && minutes > 0) {
-                newItem['duration'] = '$hours ชม. $minutes นาที';
-              } else if (hours > 0) {
-                newItem['duration'] = '$hours ชม.';
+              // sanity check: ไม่เกิน 12 ชม. ป้องกัน timezone เพี้ยนทำให้ค่าบวม
+              if (diff.inMinutes > 0 && diff.inHours < 12) {
+                final hours = diff.inHours;
+                final minutes = diff.inMinutes % 60;
+                if (hours > 0 && minutes > 0) {
+                  newItem['duration'] = _normalizeDuration('${hours}h${minutes}m');
+                } else if (hours > 0) {
+                  newItem['duration'] = _normalizeDuration('${hours}h');
+                } else {
+                  newItem['duration'] = _normalizeDuration('${minutes}m');
+                }
               } else {
-                newItem['duration'] = '$minutes นาที';
+                debugPrint(
+                  'DURATION SKIPPED: diff=${diff.inMinutes} min '
+                  '(sd=$sd, ed=$ed) — อาจเป็น timezone issue',
+                );
               }
             }
           }
 
           merged.add(newItem);
+        }
+      }
+
+      // ✅ apply time → start_date ทุก item หลัง merge เสมอ
+      // เพราะ merge อาจดึง start_date เก่ากลับมาทับ
+      for (final item in merged) {
+        final timeStr = (item['time'] ?? '').toString().trim();
+        final sd = _toDate(item['start_date']);
+        if (timeStr.isNotEmpty && sd != null && timeStr.contains(':')) {
+          final parts = timeStr.split(':');
+          final hour   = int.tryParse(parts[0]) ?? 0;
+          final minute = int.tryParse(parts[1]) ?? 0;
+          item['start_date'] = DateTime(sd.year, sd.month, sd.day, hour, minute);
         }
       }
 
@@ -1384,7 +1482,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final DateTime? start = _toDate(item['start_date']);
     final DateTime? end = _toDate(item['end_date']);
     final String time = _fmtTime(item['time']?.toString());
-    final String duration = (item['duration'] ?? '').toString();
+    final String duration = _normalizeDuration((item['duration'] ?? '').toString());
     final double? lat = _toDouble(item['lat']);
     final double? lng = _toDouble(item['lng']);
     final String price = (item['price'] ?? '').toString();
