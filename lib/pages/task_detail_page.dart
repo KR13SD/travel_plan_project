@@ -178,24 +178,31 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     if (s.isEmpty) return raw;
 
     // EN: "1 hr 30 min", "1 hr", "30 min"
-    final regENHM = RegExp(r'^(\d+)\s*hr?\s*(\d+)\s*min?$', caseSensitive: false);
-    final regENH  = RegExp(r'^(\d+)\s*hr?$', caseSensitive: false);
-    final regENM  = RegExp(r'^(\d+)\s*min?$', caseSensitive: false);
+    final regENHM = RegExp(
+      r'^(\d+)\s*hr?\s*(\d+)\s*min?$',
+      caseSensitive: false,
+    );
+    final regENH = RegExp(r'^(\d+)\s*hr?$', caseSensitive: false);
+    final regENM = RegExp(r'^(\d+)\s*min?$', caseSensitive: false);
 
     // TH: "1 ชม. 30 นาที", "1 ชม.", "30 นาที"
     final regTHHM = RegExp(r'^(\d+)\s*ชม\.?\s*(\d+)\s*นาที$');
-    final regTHH  = RegExp(r'^(\d+)\s*ชม\.?$');
-    final regTHM  = RegExp(r'^(\d+)\s*นาที$');
+    final regTHH = RegExp(r'^(\d+)\s*ชม\.?$');
+    final regTHM = RegExp(r'^(\d+)\s*นาที$');
 
     // raw: "1h30m", "1h", "30m", "90min"
-    final regRawHM = RegExp(r'^(\d+)\s*h(?:r|ours?)?\s*(\d+)\s*m(?:in)?$', caseSensitive: false);
-    final regRawH  = RegExp(r'^(\d+)\s*h(?:r|ours?)?$', caseSensitive: false);
-    final regRawM  = RegExp(r'^(\d+)\s*m(?:in(?:s)?)?$', caseSensitive: false);
+    final regRawHM = RegExp(
+      r'^(\d+)\s*h(?:r|ours?)?\s*(\d+)\s*m(?:in)?$',
+      caseSensitive: false,
+    );
+    final regRawH = RegExp(r'^(\d+)\s*h(?:r|ours?)?$', caseSensitive: false);
+    final regRawM = RegExp(r'^(\d+)\s*m(?:in(?:s)?)?$', caseSensitive: false);
 
     // HM patterns
     for (final reg in [regENHM, regTHHM, regRawHM]) {
       final m = reg.firstMatch(s);
-      if (m != null) return 'durationHM'.trParams({'h': m.group(1)!, 'm': m.group(2)!});
+      if (m != null)
+        return 'durationHM'.trParams({'h': m.group(1)!, 'm': m.group(2)!});
     }
     // H patterns
     for (final reg in [regENH, regTHH, regRawH]) {
@@ -644,7 +651,7 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
         if (timeStr.isNotEmpty && sd != null && timeStr.contains(':')) {
           final parts = timeStr.split(':');
-          final hour   = int.tryParse(parts[0]) ?? 0;
+          final hour = int.tryParse(parts[0]) ?? 0;
           final minute = int.tryParse(parts[1]) ?? 0;
           sd = DateTime(sd.year, sd.month, sd.day, hour, minute);
         }
@@ -695,11 +702,13 @@ class _TaskDetailPageState extends State<TaskDetailPage>
             // ป้องกัน images list ว่างทับของเดิม
             if ((key == 'images' || key == 'image') &&
                 value is List &&
-                value.isEmpty) return;
+                value.isEmpty)
+              return;
 
             // ป้องกัน price / reserve ว่างทับค่าเดิม
             if ((key == 'price' || key == 'reserve') &&
-                value.toString().trim().isEmpty) return;
+                value.toString().trim().isEmpty)
+              return;
 
             mergedItem[key] = value;
           });
@@ -732,7 +741,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
                 final hours = diff.inHours;
                 final minutes = diff.inMinutes % 60;
                 if (hours > 0 && minutes > 0) {
-                  newItem['duration'] = _normalizeDuration('${hours}h${minutes}m');
+                  newItem['duration'] = _normalizeDuration(
+                    '${hours}h${minutes}m',
+                  );
                 } else if (hours > 0) {
                   newItem['duration'] = _normalizeDuration('${hours}h');
                 } else {
@@ -758,9 +769,15 @@ class _TaskDetailPageState extends State<TaskDetailPage>
         final sd = _toDate(item['start_date']);
         if (timeStr.isNotEmpty && sd != null && timeStr.contains(':')) {
           final parts = timeStr.split(':');
-          final hour   = int.tryParse(parts[0]) ?? 0;
+          final hour = int.tryParse(parts[0]) ?? 0;
           final minute = int.tryParse(parts[1]) ?? 0;
-          item['start_date'] = DateTime(sd.year, sd.month, sd.day, hour, minute);
+          item['start_date'] = DateTime(
+            sd.year,
+            sd.month,
+            sd.day,
+            hour,
+            minute,
+          );
         }
       }
 
@@ -814,19 +831,45 @@ class _TaskDetailPageState extends State<TaskDetailPage>
 
   void _swapScheduleFields(Map<String, dynamic> a, Map<String, dynamic> b) {
     final tmpStart = a['start_date'];
-    final tmpEnd = a['end_date'];
     final tmpTime = a['time'];
-    final tmpDuration = a['duration'];
 
     a['start_date'] = b['start_date'];
-    a['end_date'] = b['end_date'];
     a['time'] = b['time'];
-    a['duration'] = b['duration'];
 
     b['start_date'] = tmpStart;
-    b['end_date'] = tmpEnd;
     b['time'] = tmpTime;
-    b['duration'] = tmpDuration;
+
+    // คำนวณ end_date ใหม่จาก start + duration ของแต่ละตัว
+    _recalcEndDate(a);
+    _recalcEndDate(b);
+  }
+
+  void _recalcEndDate(Map<String, dynamic> item) {
+    final sd = _toDate(item['start_date']);
+    final durRaw = (item['duration'] ?? '').toString();
+    if (sd == null || durRaw.isEmpty) return;
+
+    // parse minutes จาก raw duration
+    int? minutes = _parseDurationToMinutes(durRaw);
+    if (minutes != null && minutes > 0) {
+      item['end_date'] = sd.add(Duration(minutes: minutes));
+    }
+  }
+
+  int? _parseDurationToMinutes(String raw) {
+    final s = raw.trim().toLowerCase();
+    final regHM = RegExp(r'(\d+)\s*h[^0-9]*(\d+)\s*m');
+    final regH = RegExp(r'^(\d+)\s*h');
+    final regM = RegExp(r'^(\d+)\s*m');
+
+    final mHM = regHM.firstMatch(s);
+    if (mHM != null)
+      return int.parse(mHM.group(1)!) * 60 + int.parse(mHM.group(2)!);
+    final mH = regH.firstMatch(s);
+    if (mH != null) return int.parse(mH.group(1)!) * 60;
+    final mM = regM.firstMatch(s);
+    if (mM != null) return int.parse(mM.group(1)!);
+    return null;
   }
 
   void _moveChecklistItem(
@@ -1482,7 +1525,9 @@ class _TaskDetailPageState extends State<TaskDetailPage>
     final DateTime? start = _toDate(item['start_date']);
     final DateTime? end = _toDate(item['end_date']);
     final String time = _fmtTime(item['time']?.toString());
-    final String duration = _normalizeDuration((item['duration'] ?? '').toString());
+    final String duration = _normalizeDuration(
+      (item['duration'] ?? '').toString(),
+    );
     final double? lat = _toDouble(item['lat']);
     final double? lng = _toDouble(item['lng']);
     final String price = (item['price'] ?? '').toString();
